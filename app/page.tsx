@@ -1,25 +1,44 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
+
+import { generateClient } from "aws-amplify/data";
+import type { Schema } from "@/amplify/data/resource";
+
+const client = generateClient<Schema>();
+
+function AfterAuthGate() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      // owner() auth: list() will only return the signed-in user's own profile
+      const { data, errors } = await client.models.UserProfile.list({ limit: 1 });
+      if (errors) console.error(errors);
+
+      if (!data || data.length === 0) {
+        router.replace("/profile");
+      } else {
+        router.replace("/dashboard");
+      }
+      setChecking(false);
+    })();
+  }, [router]);
+
+  return <p>{checking ? "Loading…" : "Redirecting…"}</p>;
+}
 
 export default function HomePage() {
   return (
     <main style={{ padding: 24 }}>
       <Authenticator>
-        {({ user, signOut }) => (
-          <div style={{ display: "grid", gap: 12 }}>
-            <h1>Dashboard</h1>
-            <p>Signed in as: {user?.signInDetails?.loginId ?? user?.username}</p>
-
-            {/* Replace this with your real dashboard UI */}
-            <div style={{ padding: 16, border: "1px solid #ddd", borderRadius: 8 }}>
-              <h2>Mock Exams</h2>
-              <p>Coming soon…</p>
-            </div>
-
-            <button onClick={signOut}>Sign out</button>
-          </div>
+        {() => (
+          // Once authenticated, decide where to send them
+          <AfterAuthGate />
         )}
       </Authenticator>
     </main>
