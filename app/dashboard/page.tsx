@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { SiteHeader } from "@/components/SiteHeader";
@@ -42,22 +42,25 @@ export default function DashboardPage() {
       setLoading(true);
 
       // auth gate: if signed out -> /login
-      let current;
+      let userId: string;
+      let login: string;
       try {
-        current = await getCurrentUser();
+        const current = await getCurrentUser();
+        userId = current.userId; // Cognito sub
+        login = current.signInDetails?.loginId ?? current.username ?? "";
       } catch {
         router.replace("/login");
         return;
       }
 
-      setLoginId(current.signInDetails?.loginId ?? current.username ?? "");
-
+      setLoginId(login);
       setIsAdmin(await checkIsAdmin());
 
-      // owner-scoped, no filter needed
-      const profileRes = await client.models.UserProfile.list({ limit: 1 });
-      const p = profileRes.data?.[0] ?? null;
+      // Design A: profile id == sub
+      const profileRes = await client.models.UserProfile.get({ id: userId });
+      if (profileRes.errors?.length) console.error(profileRes.errors);
 
+      const p = profileRes.data ?? null;
       if (!p) {
         router.replace("/profile");
         return;
@@ -65,6 +68,7 @@ export default function DashboardPage() {
       setProfile(p);
 
       const examsRes = await client.models.MockExam.list({ limit: 200 });
+      if (examsRes.errors?.length) console.error(examsRes.errors);
       setExams(examsRes.data ?? []);
 
       setLoading(false);
@@ -78,10 +82,19 @@ export default function DashboardPage() {
     const ok = window.confirm("Delete your profile + account? This cannot be undone.");
     if (!ok) return;
 
-    const res = await client.models.UserProfile.list();
-    for (const p of res.data ?? []) {
-      await client.models.UserProfile.delete({ id: p.id });
+    let userId: string;
+    try {
+      const u = await getCurrentUser();
+      userId = u.userId; // Cognito sub
+    } catch {
+      router.replace("/login");
+      return;
     }
+
+    // Design A: delete single profile by id=sub
+    const del = await client.models.UserProfile.delete({ id: userId });
+    if (del.errors?.length) console.error(del.errors);
+
     await deleteUser();
     router.replace("/login");
   }
@@ -185,7 +198,6 @@ export default function DashboardPage() {
               </div>
             </Card>
 
-            {/* Danger zone kept out of the header */}
             <div style={{ marginTop: 6 }}>
               <button
                 onClick={handleDeleteAccount}

@@ -45,34 +45,15 @@ export default function LoginPage() {
         <div style={{ width: "min(520px, 100%)" }}>
           {/* Brand */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ fontWeight: 900, letterSpacing: -0.5 }}>MOCK EXAMS</div>
-            <button
-              onClick={() => router.push("/")}
-              style={{
-                border: "1px solid var(--border)",
-                background: "#fff",
-                color: "var(--fg)",
-                borderRadius: 12,
-                padding: "8px 10px",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              Home
-            </button>
+            <div style={{ fontWeight: 900, letterSpacing: -0.5, fontSize: 32 }}>Mock Exams</div>
           </div>
 
           {/* Title + copy */}
           <div style={{ marginTop: 26, marginBottom: 16 }}>
-            <div style={{ fontSize: 42, fontWeight: 800, letterSpacing: -1 }}>
+            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -1 }}>
               Ready to start your{" "}
-              <span style={{ textDecoration: "underline" }}>success story</span>?
+              <span>success story</span>?
             </div>
-            <p className="small" style={{ margin: "12px 0 0 0", lineHeight: 1.5 }}>
-              Sign in or create an account to access upcoming mock exams, track your results, and
-              improve your performance.
-            </p>
           </div>
 
           {/* Form container */}
@@ -103,9 +84,9 @@ export default function LoginPage() {
                   },
                 },
                 signUp: {
-                  username: {
+                  email: {
                     label: "Email",
-                    placeholder: "you@example.com",
+                    placeholder: "Enter your username",
                     isRequired: true,
                   },
                   password: {
@@ -124,10 +105,6 @@ export default function LoginPage() {
               {({ user }) => <AuthRedirect user={user} />}
             </Authenticator>
           </Card>
-
-          <div className="small" style={{ marginTop: 14, opacity: 0.75 }}>
-            Tip: If you were recently added to the Admin group, sign out and sign in again.
-          </div>
         </div>
       </div>
 
@@ -136,10 +113,16 @@ export default function LoginPage() {
         style={{
           borderLeft: "1px solid var(--border)",
           background: "#fff",
-          display: "grid",
-          alignItems: "center",
-          justifyItems: "center",
           padding: 22,
+
+          // key lines:
+          position: "sticky",
+          top: 0,
+          alignSelf: "start",
+          height: "100vh",
+
+          display: "grid",
+          placeItems: "center",
         }}
       >
         <div style={{ width: "min(560px, 100%)" }}>

@@ -37,17 +37,17 @@ export default function ProfilePage() {
       let userId: string;
       try {
         const u = await getCurrentUser();
-        userId = u.userId;
+        userId = u.userId; // Cognito sub
       } catch {
         router.replace("/login");
         return;
       }
 
-      // With owner() auth, list() already returns only this user’s profile.
-      const res = await client.models.UserProfile.list({ limit: 1 });
+      // Design A: profile id == sub
+      const res = await client.models.UserProfile.get({ id: userId });
       if (res.errors?.length) console.error(res.errors);
 
-      const p = res.data?.[0] ?? null;
+      const p = res.data ?? null;
       setExisting(p);
 
       if (p) {
@@ -59,7 +59,6 @@ export default function ProfilePage() {
           highSchool: p.highSchool ?? "",
         });
       } else {
-        // If no profile exists, keep empty form
         setForm({ firstName: "", lastName: "", county: "", age: "", highSchool: "" });
       }
 
@@ -76,7 +75,7 @@ export default function ProfilePage() {
       let userId: string;
       try {
         const u = await getCurrentUser();
-        userId = u.userId;
+        userId = u.userId; // Cognito sub
       } catch {
         router.replace("/login");
         return;
@@ -94,8 +93,9 @@ export default function ProfilePage() {
         age = n;
       }
 
+      // Design A: only ONE profile per user; id is the sub.
       const payload = {
-        userId,
+        id: userId,
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         county: form.county.trim(),
@@ -103,8 +103,10 @@ export default function ProfilePage() {
         ...(age === undefined ? {} : { age }),
       };
 
-      const res = existing
-        ? await client.models.UserProfile.update({ id: existing.id, ...payload })
+      // Upsert
+      const existingRes = await client.models.UserProfile.get({ id: userId });
+      const res = existingRes.data
+        ? await client.models.UserProfile.update(payload)
         : await client.models.UserProfile.create(payload);
 
       if (res.errors?.length) {

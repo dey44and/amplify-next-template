@@ -3,15 +3,15 @@ import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 const schema = a.schema({
   UserProfile: a
     .model({
-      userId: a.string(), // Cognito sub
       firstName: a.string(),
       lastName: a.string(),
       county: a.string(),
       age: a.integer(),
       highSchool: a.string(),
     })
-    .authorization((allow) => [allow.owner()])
-    .secondaryIndexes((index) => [index("userId")]),
+    .authorization((allow) => [
+      allow.ownerDefinedIn("id").identityClaim("sub"),
+    ]),
 
   MockExam: a
     .model({
