@@ -1,12 +1,25 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
 
 import { Card } from "@/components/ui";
+import type { AuthUser } from "aws-amplify/auth";
+
+function AuthRedirect({ user }: { user?: AuthUser }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user) router.replace("/dashboard");
+  }, [user, router]);
+
+  // must return an Element, not null
+  return <div />;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,24 +70,21 @@ export default function LoginPage() {
               <span style={{ textDecoration: "underline" }}>success story</span>?
             </div>
             <p className="small" style={{ margin: "12px 0 0 0", lineHeight: 1.5 }}>
-              Sign in or create an account to access upcoming mock exams, track your results,
-              and improve your performance.
+              Sign in or create an account to access upcoming mock exams, track your results, and
+              improve your performance.
             </p>
           </div>
 
           {/* Form container */}
           <Card>
-            <div style={{ marginBottom: 10, fontWeight: 800 }}>
-              Sign in / Sign up
-            </div>
+            <div style={{ marginBottom: 10, fontWeight: 800 }}>Sign in / Sign up</div>
 
             <Authenticator
-              // important: we embed it inside our design
               hideSignUp={false}
               components={{
                 Header() {
-                  // remove Amplify default header spacing
-                  return null;
+                  // MUST return an Element (not null) to satisfy typings in prod builds
+                  return <></>;
                 },
                 Footer() {
                   return (
@@ -111,12 +121,7 @@ export default function LoginPage() {
                 },
               }}
             >
-              {() => {
-                // Once authenticated, send them to dashboard
-                // (This runs after successful sign-in)
-                router.replace("/dashboard");
-                return null;
-              }}
+              {({ user }) => <AuthRedirect user={user} />}
             </Authenticator>
           </Card>
 
