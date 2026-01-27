@@ -3,21 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Authenticator } from "@aws-amplify/ui-react";
-import "@aws-amplify/ui-react/styles.css";
+import { SiteHeader } from "@/components/SiteHeader";
+import { PageShell } from "@/components/PageShell";
+import { Card, OutlineButton } from "@/components/ui";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import { getCurrentUser, signOut } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
-
 type Profile = Schema["UserProfile"]["type"];
 
-function ProfileForm() {
+export default function ProfilePage() {
   const router = useRouter();
 
   const [existing, setExisting] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
     firstName: "",
@@ -31,10 +33,21 @@ function ProfileForm() {
     (async () => {
       setLoading(true);
 
-      const { data, errors } = await client.models.UserProfile.list({ limit: 1 });
-      if (errors) console.error(errors);
+      // Protect route: if not logged in -> /login
+      let userId: string;
+      try {
+        const u = await getCurrentUser();
+        userId = u.userId;
+      } catch {
+        router.replace("/login");
+        return;
+      }
 
-      const p = data?.[0] ?? null;
+      // With owner() auth, list() already returns only this user’s profile.
+      const res = await client.models.UserProfile.list({ limit: 1 });
+      if (res.errors?.length) console.error(res.errors);
+
+      const p = res.data?.[0] ?? null;
       setExisting(p);
 
       if (p) {
@@ -45,62 +58,145 @@ function ProfileForm() {
           age: p.age != null ? String(p.age) : "",
           highSchool: p.highSchool ?? "",
         });
+      } else {
+        // If no profile exists, keep empty form
+        setForm({ firstName: "", lastName: "", county: "", age: "", highSchool: "" });
       }
 
       setLoading(false);
-    })();
-  }, []);
+    })().catch((e) => {
+      console.error(e);
+      setLoading(false);
+    });
+  }, [router]);
 
   async function onSave() {
-    const payload = {
-      firstName: form.firstName,
-      lastName: form.lastName,
-      county: form.county,
-      age: Number(form.age),
-      highSchool: form.highSchool,
-    };
+    setSaving(true);
+    try {
+      let userId: string;
+      try {
+        const u = await getCurrentUser();
+        userId = u.userId;
+      } catch {
+        router.replace("/login");
+        return;
+      }
 
-    if (existing) {
-      await client.models.UserProfile.update({
-        id: existing.id,
-        ...payload,
-      });
-    } else {
-      await client.models.UserProfile.create(payload);
+      const ageStr = form.age.trim();
+      let age: number | undefined;
+
+      if (ageStr !== "") {
+        const n = Number(ageStr);
+        if (!Number.isFinite(n) || !Number.isInteger(n)) {
+          alert("Age must be an integer number.");
+          return;
+        }
+        age = n;
+      }
+
+      const payload = {
+        userId,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        county: form.county.trim(),
+        highSchool: form.highSchool.trim(),
+        ...(age === undefined ? {} : { age }),
+      };
+
+      const res = existing
+        ? await client.models.UserProfile.update({ id: existing.id, ...payload })
+        : await client.models.UserProfile.create(payload);
+
+      if (res.errors?.length) {
+        console.error(res.errors);
+        alert("Failed to save profile. Check console for details.");
+        return;
+      }
+
+      router.replace("/dashboard");
+    } finally {
+      setSaving(false);
     }
-
-    router.push("/dashboard");
   }
 
-  if (loading) return <p style={{ padding: 24 }}>Loading profile…</p>;
-
   return (
-    <main style={{ padding: 24 }}>
-      <h1>{existing ? "Edit your profile" : "Complete your profile"}</h1>
+    <>
+      <SiteHeader
+        rightSlot={
+          <div style={{ display: "flex", gap: 10 }}>
+            <OutlineButton
+              onClick={async () => {
+                await signOut();
+                router.replace("/login");
+              }}
+            >
+              Sign out
+            </OutlineButton>
+          </div>
+        }
+      />
 
-      {(["firstName", "lastName", "county", "age", "highSchool"] as const).map((k) => (
-        <div key={k} style={{ marginTop: 12 }}>
-          <label style={{ display: "block" }}>{k}</label>
-          <input
-            value={form[k]}
-            onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-            style={{ padding: 8, width: 320 }}
-          />
+      <PageShell>
+        <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: -0.8 }}>
+              {existing ? "Edit profile" : "Complete your profile"}
+            </div>
+            <div className="small">This information is visible only to you.</div>
+          </div>
+
+          <Card>
+            {loading ? (
+              <p className="small" style={{ margin: 0 }}>
+                Loading profile…
+              </p>
+            ) : (
+              <div style={{ display: "grid", gap: 14, maxWidth: 520 }}>
+                {(
+                  [
+                    ["firstName", "First name"],
+                    ["lastName", "Last name"],
+                    ["county", "County"],
+                    ["age", "Age"],
+                    ["highSchool", "High school"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <div key={k} style={{ display: "grid", gap: 6 }}>
+                    <label className="small" style={{ color: "var(--fg)", fontWeight: 700 }}>
+                      {label}
+                    </label>
+                    <input
+                      value={form[k]}
+                      onChange={(e) => setForm({ ...form, [k]: e.target.value })}
+                      disabled={saving}
+                      style={{
+                        padding: "12px 12px",
+                        borderRadius: 12,
+                        border: "1px solid var(--border)",
+                        outline: "none",
+                        fontSize: 14,
+                      }}
+                    />
+                  </div>
+                ))}
+
+                <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                  <OutlineButton onClick={onSave} disabled={saving}>
+                    {saving ? "Saving…" : "Save"}
+                  </OutlineButton>
+                  <OutlineButton
+                    onClick={() => router.push("/dashboard")}
+                    disabled={saving}
+                    style={{ borderColor: "rgba(0,0,0,0.08)" }}
+                  >
+                    Cancel
+                  </OutlineButton>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
-      ))}
-
-      <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-        <button onClick={onSave}>Save</button>
-        <button onClick={() => router.push("/dashboard")}>Cancel</button>
-      </div>
-    </main>
-  );
-}
-
-export default function ProfilePage() {
-  return (
-    <Authenticator>
-      {() => <ProfileForm />}
-    </Authenticator>
+      </PageShell>
+    </>
   );
 }

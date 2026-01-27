@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./app.css";
 import AmplifyClientProvider from "./amplify-client";
 
-const inter = Inter({ subsets: ["latin"] });
+import { Bebas_Neue, Inter } from "next/font/google";
+
+const display = Bebas_Neue({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-display",
+});
+
+const body = Inter({
+  subsets: ["latin"],
+  variable: "--font-body",
+});
 
 export const metadata: Metadata = {
   title: "Mock Exams",
@@ -16,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={`${display.variable} ${body.variable}`}>
+      <body>
         <AmplifyClientProvider>{children}</AmplifyClientProvider>
       </body>
     </html>

@@ -1,32 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Authenticator } from "@aws-amplify/ui-react";
-import "@aws-amplify/ui-react/styles.css";
+import { SiteHeader } from "@/components/SiteHeader";
+import { PageShell } from "@/components/PageShell";
+import { Card, OutlineButton } from "@/components/ui";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { deleteUser } from "aws-amplify/auth";
+import {
+  deleteUser,
+  fetchAuthSession,
+  getCurrentUser,
+  signOut,
+} from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
 type Profile = Schema["UserProfile"]["type"];
 type Exam = Schema["MockExam"]["type"];
 
-function DashboardInner() {
+async function checkIsAdmin() {
+  const session = await fetchAuthSession();
+  const groups =
+    (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) ?? [];
+  return groups.includes("Admin");
+}
+
+export default function DashboardPage() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loginId, setLoginId] = useState<string>("");
 
   useEffect(() => {
-    async function load() {
+    (async () => {
       setLoading(true);
 
-      // 1) Ensure profile exists (owner() => only returns current user's profile)
+      // auth gate: if signed out -> /login
+      let current;
+      try {
+        current = await getCurrentUser();
+      } catch {
+        router.replace("/login");
+        return;
+      }
+
+      setLoginId(current.signInDetails?.loginId ?? current.username ?? "");
+
+      setIsAdmin(await checkIsAdmin());
+
+      // owner-scoped, no filter needed
       const profileRes = await client.models.UserProfile.list({ limit: 1 });
       const p = profileRes.data?.[0] ?? null;
 
@@ -36,100 +64,147 @@ function DashboardInner() {
       }
       setProfile(p);
 
-      // 2) Load mock exams (authenticated users can read per your schema)
-      const examsRes = await client.models.MockExam.list({ limit: 50 });
+      const examsRes = await client.models.MockExam.list({ limit: 200 });
       setExams(examsRes.data ?? []);
 
       setLoading(false);
-    }
-
-    load().catch((e) => {
+    })().catch((e) => {
       console.error(e);
       setLoading(false);
     });
   }, [router]);
 
-  if (loading) return <p style={{ padding: 24 }}>Loading dashboard…</p>;
-
-  return (
-    <main style={{ padding: 24, display: "grid", gap: 16 }}>
-      <header style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Dashboard</h1>
-          <p style={{ margin: "8px 0 0 0" }}>
-            Welcome, {profile?.firstName} {profile?.lastName}
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            onClick={() => router.push("/profile")}
-            style={{ padding: "8px 12px" }}
-          >
-            Edit profile
-          </button>
-        </div>
-      </header>
-
-      <section style={{ padding: 16, border: "1px solid #ddd", borderRadius: 10 }}>
-        <h2 style={{ marginTop: 0 }}>Available mock exams</h2>
-
-        {exams.length === 0 ? (
-          <p>No exams yet. (An Admin must create them.)</p>
-        ) : (
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {exams.map((e) => (
-              <li key={e.id} style={{ margin: "10px 0" }}>
-                <div style={{ fontWeight: 600 }}>{e.title}</div>
-                <div style={{ fontSize: 14, opacity: 0.8 }}>
-                  Admission type: {e.admissionType}
-                </div>
-
-                {/* Later you can create /exam/[id] and navigate there */}
-                <button
-                  onClick={() => router.push(`/exam/${e.id}`)}
-                  style={{ marginTop: 8, padding: "6px 10px" }}
-                >
-                  Start exam
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
-  );
-}
-
-export default function DashboardPage() {
   async function handleDeleteAccount() {
-    const ok = window.confirm(
-      "This will delete your account from Cognito. Continue?"
-    );
+    const ok = window.confirm("Delete your profile + account? This cannot be undone.");
     if (!ok) return;
-    await deleteUser(); // deletes the currently signed-in user and signs them out
+
+    const res = await client.models.UserProfile.list();
+    for (const p of res.data ?? []) {
+      await client.models.UserProfile.delete({ id: p.id });
+    }
+    await deleteUser();
+    router.replace("/login");
   }
 
   return (
-    <Authenticator>
-      {({ user, signOut }) => (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ padding: 24, display: "flex", gap: 8 }}>
-            <button onClick={signOut} style={{ padding: "8px 12px" }}>
+    <>
+      <SiteHeader
+        rightSlot={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="small" style={{ opacity: 0.75 }}>
+              {loginId}
+            </span>
+            <OutlineButton
+              onClick={async () => {
+                await signOut();
+                router.replace("/login");
+              }}
+            >
               Sign out
-            </button>
-            <button onClick={handleDeleteAccount} style={{ padding: "8px 12px" }}>
-              Delete account
-            </button>
+            </OutlineButton>
+          </div>
+        }
+      />
 
-            <div style={{ marginLeft: "auto", opacity: 0.7 }}>
-              {user?.signInDetails?.loginId ?? user?.username}
+      <PageShell>
+        {loading ? (
+          <p className="small">Loading dashboard…</p>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>
+                Welcome, {profile?.firstName} {profile?.lastName}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
+                {isAdmin && (
+                  <OutlineButton onClick={() => router.push("/admin/exams")}>
+                    Admin exams
+                  </OutlineButton>
+                )}
+              </div>
+            </div>
+
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.4 }}>
+                    Available mock exams
+                  </div>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    Choose an exam and start practicing.
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+                {exams.length === 0 ? (
+                  <p className="small" style={{ margin: 0 }}>
+                    No exams yet. (An Admin must create them.)
+                  </p>
+                ) : (
+                  exams.map((e) => (
+                    <div
+                      key={e.id}
+                      style={{
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: 12,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>{e.title}</div>
+                      <div className="small">Admission type: {e.admissionType}</div>
+
+                      <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                        <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
+                          Start exam
+                        </OutlineButton>
+
+                        {isAdmin && (
+                          <button
+                            onClick={() => router.push(`/admin/exams/${e.id}`)}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              padding: "10px 0",
+                              cursor: "pointer",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: "rgba(0,0,0,0.7)",
+                              textDecoration: "underline",
+                            }}
+                          >
+                            Edit (Admin)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            {/* Danger zone kept out of the header */}
+            <div style={{ marginTop: 6 }}>
+              <button
+                onClick={handleDeleteAccount}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: 13,
+                  color: "rgba(0,0,0,0.55)",
+                  textDecoration: "underline",
+                }}
+              >
+                Delete account
+              </button>
             </div>
           </div>
-
-          <DashboardInner />
-        </div>
-      )}
-    </Authenticator>
+        )}
+      </PageShell>
+    </>
   );
 }
