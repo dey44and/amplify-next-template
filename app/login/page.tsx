@@ -25,16 +25,9 @@ export default function LoginPage() {
   const router = useRouter();
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        gridTemplateColumns: "1.1fr 0.9fr",
-        background: "var(--bg)",
-      }}
-    >
+    <div className="loginGrid">
       {/* LEFT: form side */}
-      <div
+      <div className="loginLeft"
         style={{
           padding: "48px 22px",
           display: "grid",
@@ -109,7 +102,7 @@ export default function LoginPage() {
       </div>
 
       {/* RIGHT: illustration side */}
-      <div
+      <div className="loginRight"
         style={{
           borderLeft: "1px solid var(--border)",
           background: "#fff",
@@ -119,7 +112,7 @@ export default function LoginPage() {
           position: "sticky",
           top: 0,
           alignSelf: "start",
-          height: "100vh",
+          // height: "100vh",
 
           display: "grid",
           placeItems: "center",
