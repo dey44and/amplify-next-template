@@ -1,0 +1,1 @@
+try { await getCurrentUser(); } catch { router.replace("/login") }
