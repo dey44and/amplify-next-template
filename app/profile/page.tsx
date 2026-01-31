@@ -9,7 +9,7 @@ import { Card, OutlineButton } from "@/components/ui";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser, signOut, deleteUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 type Profile = Schema["UserProfile"]["type"];
@@ -68,6 +68,27 @@ export default function ProfilePage() {
       setLoading(false);
     });
   }, [router]);
+
+  async function handleDeleteAccount() {
+    const ok = window.confirm("Delete your profile + account? This cannot be undone.");
+    if (!ok) return;
+
+    let userId: string;
+    try {
+      const u = await getCurrentUser();
+      userId = u.userId; // Cognito sub
+    } catch {
+      router.replace("/login");
+      return;
+    }
+
+    // Design A: delete single profile by id=sub
+    const del = await client.models.UserProfile.delete({ id: userId });
+    if (del.errors?.length) console.error(del.errors);
+
+    await deleteUser();
+    router.replace("/login");
+  }
 
   async function onSave() {
     setSaving(true);
@@ -197,6 +218,22 @@ export default function ProfilePage() {
               </div>
             )}
           </Card>
+        </div>
+        <div style={{ marginTop: 6 }}>
+          <button
+            onClick={handleDeleteAccount}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              fontSize: 13,
+              color: "rgba(0,0,0,0.55)",
+              textDecoration: "underline",
+            }}
+          >
+            Delete account
+          </button>
         </div>
       </PageShell>
     </>
