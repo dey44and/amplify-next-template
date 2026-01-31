@@ -183,12 +183,6 @@ export default function AdminExamsPage() {
             <div className="small" style={{ marginLeft: 8 }}>
               Create and manage mock exams.
             </div>
-
-            <div style={{ marginLeft: "auto" }}>
-              <OutlineButton onClick={() => router.push("/dashboard")}>
-                Back to dashboard
-              </OutlineButton>
-            </div>
           </div>
 
           {/* Create */}

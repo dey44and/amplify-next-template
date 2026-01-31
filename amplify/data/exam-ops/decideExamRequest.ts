@@ -7,7 +7,7 @@ import { env } from "$amplify/env/decideExamRequest";
 
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
 Amplify.configure(resourceConfig, libraryOptions);
-const client = generateClient<Schema>();
+const client = generateClient<Schema>({ authMode: "iam" });
 
 function getIdentity(event: any) {
   // Cast once; TS identity union is strict

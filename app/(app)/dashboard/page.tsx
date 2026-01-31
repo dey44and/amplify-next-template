@@ -26,6 +26,23 @@ async function checkIsAdmin() {
   return groups.includes("Admin");
 }
 
+function notNull<T>(x: T | null | undefined): x is T {
+  return x != null;
+}
+
+function formatWhen(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function getWindow(exam: any) {
   const startIso = exam?.startAt as string | undefined;
   const dur = Number(exam?.durationMinutes ?? 0);
@@ -45,19 +62,6 @@ function getExamState(exam: any, nowMs: number) {
   return "after";
 }
 
-function formatWhen(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function GrayButton({ label, title }: { label: string; title?: string }) {
   return (
     <button
@@ -69,7 +73,7 @@ function GrayButton({ label, title }: { label: string; title?: string }) {
         padding: "10px 12px",
         borderRadius: 12,
 
-        // ✅ NOT BOLD (match normal button feel)
+        // normal feel (not bold)
         fontWeight: 600,
         fontSize: 14,
 
@@ -81,10 +85,6 @@ function GrayButton({ label, title }: { label: string; title?: string }) {
       {label}
     </button>
   );
-}
-
-function notNull<T>(x: T | null | undefined): x is T {
-  return x != null;
 }
 
 export default function DashboardPage() {
@@ -102,6 +102,7 @@ export default function DashboardPage() {
 
   const [nowMs, setNowMs] = useState(Date.now());
 
+  // 1s tick keeps state accurate (start/lock/unlock)
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
@@ -125,7 +126,7 @@ export default function DashboardPage() {
     return m;
   }, [requests]);
 
-  // ✅ Latest attempt per exam (so dashboard can show "View results")
+  // Latest attempt per exam (so dashboard can show results and hide "Start exam")
   const latestAttemptByExamId = useMemo(() => {
     const m = new Map<string, ExamAttempt>();
 
@@ -141,35 +142,33 @@ export default function DashboardPage() {
     for (const a of sorted) {
       const examId = (a as any).examId as string | undefined;
       if (!examId) continue;
-      if (!m.has(examId)) m.set(examId, a); // first is latest (sorted desc)
+      if (!m.has(examId)) m.set(examId, a);
     }
     return m;
   }, [attempts]);
 
   async function refreshStudentState(userId: string) {
-    // requests
     const reqRes = await client.models.ExamRequest.list({
       filter: { owner: { eq: userId } },
       limit: 500,
     });
     if (reqRes.errors?.length) console.error(reqRes.errors);
-    setRequests(reqRes.data ?? []);
+    setRequests((reqRes.data ?? []).filter(notNull));
 
-    // access
     const accRes = await client.models.ExamAccess.list({
       filter: { owner: { eq: userId } },
       limit: 500,
     });
     if (accRes.errors?.length) console.error(accRes.errors);
-    setAccess(accRes.data ?? []);
+    setAccess((accRes.data ?? []).filter(notNull));
 
-    // ✅ attempts (so we can hide Start exam after submit)
+    // attempts (so we can show results + lock review until end)
     const attRes = await client.models.ExamAttempt.list({
       filter: { userId: { eq: userId } },
       limit: 500,
     });
     if (attRes.errors?.length) console.error(attRes.errors);
-    setAttempts(attRes.data ?? []);
+    setAttempts((attRes.data ?? []).filter(notNull));
   }
 
   useEffect(() => {
@@ -204,7 +203,7 @@ export default function DashboardPage() {
 
       const examsRes = await client.models.MockExam.list({ limit: 200 });
       if (examsRes.errors?.length) console.error(examsRes.errors);
-      setExams(examsRes.data ?? []);
+      setExams((examsRes.data ?? []).filter(notNull));
 
       if (!admin) {
         await refreshStudentState(userId);
@@ -337,7 +336,12 @@ export default function DashboardPage() {
 
                     const examState = getExamState(e as any, nowMs);
 
+                    // latest attempt (if submitted)
                     const latestAttempt = latestAttemptByExamId.get(e.id);
+
+                    // ✅ Review lock logic (same as stats page)
+                    const { endMs } = getWindow(e as any);
+                    const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
 
                     return (
                       <div
@@ -363,12 +367,19 @@ export default function DashboardPage() {
                               Manage exam
                             </OutlineButton>
                           ) : latestAttempt ? (
-                            // ✅ already submitted -> do NOT show Start exam anymore
-                            <OutlineButton
-                              onClick={() => router.push(`/exam/review/${latestAttempt.id}`)}
-                            >
-                              View results
-                            </OutlineButton>
+                            // ✅ submitted: show results, but lock until exam ends
+                            reviewUnlocked ? (
+                              <OutlineButton
+                                onClick={() => router.push(`/exam/review/${latestAttempt.id}`)}
+                              >
+                                View results
+                              </OutlineButton>
+                            ) : (
+                              <GrayButton
+                                label="Review locked"
+                                title="Review unlocks after the exam time window ends."
+                              />
+                            )
                           ) : hasAccess ? (
                             examState === "during" ? (
                               <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
@@ -409,6 +420,13 @@ export default function DashboardPage() {
                             </OutlineButton>
                           )}
                         </div>
+
+                        {/* Optional helper text when locked */}
+                        {!isAdmin && latestAttempt && !reviewUnlocked && (
+                          <div className="small" style={{ opacity: 0.7 }}>
+                            Review will be available after the exam ends.
+                          </div>
+                        )}
                       </div>
                     );
                   })

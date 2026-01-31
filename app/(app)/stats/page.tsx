@@ -33,6 +33,31 @@ function formatWhen(iso?: string | null) {
   });
 }
 
+function GrayButton({ label, title }: { label: string; title?: string }) {
+  return (
+    <button
+      disabled
+      title={title}
+      style={{
+        background: "rgba(0,0,0,0.05)",
+        border: "1px solid rgba(0,0,0,0.10)",
+        padding: "10px 12px",
+        borderRadius: 12,
+
+        // normal feel (not bold)
+        fontWeight: 600,
+        fontSize: 14,
+
+        opacity: 1,
+        color: "rgba(0,0,0,0.55)",
+        cursor: "not-allowed",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 function getWindow(exam: any) {
   const startIso = exam?.startAt as string | undefined;
   const dur = Number(exam?.durationMinutes ?? 0);
@@ -224,22 +249,23 @@ export default function StatsPage() {
                           )}
 
                           <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-                            <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
+                            {/* <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
                               Go to exam
-                            </OutlineButton>
+                            </OutlineButton> */}
 
                             {latest && (
+                              reviewUnlocked ? (
                               <OutlineButton
                                 onClick={() => router.push(`/exam/review/${latest.id}`)}
-                                disabled={!reviewUnlocked}
-                                title={
-                                  !reviewUnlocked
-                                    ? "Review unlocks after the exam window ends."
-                                    : undefined
-                                }
                               >
-                                {reviewUnlocked ? "Review latest" : "Review locked"}
+                                View results
                               </OutlineButton>
+                            ) : (
+                              <GrayButton
+                                label="Review locked"
+                                title="Review unlocks after the exam time window ends."
+                              />
+                            )
                             )}
                           </div>
 

@@ -7,7 +7,7 @@ import { env } from "$amplify/env/getExamReview";
 
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
 Amplify.configure(resourceConfig, libraryOptions);
-const client = generateClient<Schema>();
+const client = generateClient<Schema>({ authMode: "iam" });
 
 function getSub(event: any): string {
   const identity = event.identity as any;
@@ -17,6 +17,38 @@ function getSub(event: any): string {
 }
 function normalize(a: unknown) {
   return String(a ?? "").trim();
+}
+
+async function getCorrectAnswerForTask(taskId: string): Promise<string> {
+  const m: any = client.models.TaskKey;
+
+  // ✅ Prefer secondary-index query if available (fast + correct)
+  const candidateFns = [
+    "listTaskKeysByTaskId",
+    "taskKeysByTaskId",
+    "listByTaskId",
+  ];
+
+  for (const fnName of candidateFns) {
+    if (typeof m?.[fnName] === "function") {
+      const r = await m[fnName]({ taskId, limit: 1 });
+      const item = (r?.data ?? [])[0];
+      return String((item as any)?.correctAnswer ?? "").trim();
+    }
+  }
+
+  // ✅ Fallback: scan without limit:1 (works for small tables)
+  const r = await client.models.TaskKey.list({
+    filter: { taskId: { eq: taskId } },
+    limit: 500, // do NOT set 1
+  });
+
+  if (r.errors?.length) {
+    console.error("TaskKey.list errors:", r.errors);
+  }
+
+  const item = (r.data ?? []).find(Boolean);
+  return String((item as any)?.correctAnswer ?? "").trim();
 }
 
 export const handler: Schema["getExamReview"]["functionHandler"] = async (event) => {
@@ -46,11 +78,7 @@ export const handler: Schema["getExamReview"]["functionHandler"] = async (event)
   const items: any[] = [];
   for (const t of tasks) {
     const userAnswer = normalize(answers[t.id]);
-    const keyRes = await client.models.TaskKey.list({
-      filter: { taskId: { eq: t.id } },
-      limit: 1,
-    });
-    const correct = normalize((keyRes.data?.[0] as any)?.correctAnswer);
+    const correct = normalize(await getCorrectAnswerForTask(t.id));
 
     const mark = Number(t.mark ?? 0);
     const isCorrect =

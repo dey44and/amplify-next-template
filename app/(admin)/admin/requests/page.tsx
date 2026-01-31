@@ -174,12 +174,6 @@ export default function AdminRequestsPage() {
             </div>
 
             <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <OutlineButton onClick={() => router.push("/admin/exams")}>
-                Admin exams
-              </OutlineButton>
-              <OutlineButton onClick={() => router.push("/dashboard")}>
-                Back to dashboard
-              </OutlineButton>
               <OutlineButton onClick={() => refresh()} disabled={loading}>
                 Refresh
               </OutlineButton>

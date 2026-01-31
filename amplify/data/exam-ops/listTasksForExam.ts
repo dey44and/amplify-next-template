@@ -7,7 +7,7 @@ import { env } from "$amplify/env/listTasksForExam"; // must match function name
 
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
 Amplify.configure(resourceConfig, libraryOptions);
-const client = generateClient<Schema>();
+const client = generateClient<Schema>({ authMode: "iam" });
 
 export const handler: Schema["listTasksForExam"]["functionHandler"] = async (event) => {
   const examId = event.arguments.examId;
