@@ -6,23 +6,18 @@ import { useParams, useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { isAdmin } from "@/lib/isAdmin";
+import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser, signOut } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
 type Task = Schema["Task"]["type"];
 type TaskKey = Schema["TaskKey"]["type"];
-
-async function isAdmin() {
-  const session = await fetchAuthSession();
-  const groups =
-    (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) ?? [];
-  return groups.includes("Admin");
-}
 
 /**
  * Convert "YYYY-MM-DDTHH:mm" (datetime-local) to ISO string reliably in local time.
@@ -47,10 +42,6 @@ function isoToLocalDatetimeValue(iso?: string | null) {
   const hh = pad(d.getHours());
   const mi = pad(d.getMinutes());
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-}
-
-function notNull<T>(x: T | null | undefined): x is T {
-  return x != null;
 }
 
 export default function AdminExamDetailPage() {
@@ -122,7 +113,7 @@ export default function AdminExamDetailPage() {
     const taskIds = new Set(sortedTasks.map((t) => t.id));
     const m = new Map<string, TaskKey>();
     for (const k of (keysRes.data ?? []).filter(notNull)) {
-      const tid = (k as any).taskId as string | undefined;
+      const tid = k.taskId;
       if (tid && taskIds.has(tid)) m.set(tid, k);
     }
     setKeysByTaskId(m);
@@ -162,8 +153,8 @@ export default function AdminExamDetailPage() {
 
     const title = exam.title?.trim() ?? "";
     const admissionType = exam.admissionType?.trim() ?? "";
-    const startAt = (exam as any).startAt?.trim?.() ?? (exam as any).startAt ?? "";
-    const durationMinutes = Number((exam as any).durationMinutes);
+    const startAt = exam.startAt?.trim() ?? "";
+    const durationMinutes = Number(exam.durationMinutes);
 
     if (!title || !admissionType || !startAt) {
       alert("Title, admission type, and start time are required.");
@@ -182,7 +173,7 @@ export default function AdminExamDetailPage() {
         admissionType,
         startAt,
         durationMinutes,
-      } as any);
+      });
 
       if (res.errors?.length) {
         console.error(res.errors);
@@ -321,17 +312,15 @@ export default function AdminExamDetailPage() {
         ) : !exam ? (
           <p className="small">Exam not found.</p>
         ) : (
-          <div style={{ display: "grid", gap: 14 }}>
+          <div className="panel-stack">
             {/* Top row */}
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>
-                Admin • Manage exam
-              </div>
+            <div className="panel-top-row">
+              <div className="page-title">Admin • Manage exam</div>
               <div className="small" style={{ opacity: 0.75 }}>
                 ID: {examId}
               </div>
 
-              <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className="panel-actions">
                 <OutlineButton onClick={() => router.push("/admin/exams")}>Back</OutlineButton>
                 <OutlineButton onClick={saveExam} disabled={savingExam}>
                   {savingExam ? "Saving…" : "Save"}
@@ -341,9 +330,7 @@ export default function AdminExamDetailPage() {
 
             {/* Exam details */}
             <Card>
-              <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-                Exam details
-              </div>
+              <div className="section-title">Exam details</div>
 
               <div style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 720 }}>
                 <input
@@ -363,9 +350,9 @@ export default function AdminExamDetailPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 10 }}>
                   <input
                     type="datetime-local"
-                    value={isoToLocalDatetimeValue((exam as any).startAt)}
+                    value={isoToLocalDatetimeValue(exam.startAt)}
                     onChange={(e) =>
-                      setExam({ ...(exam as any), startAt: localDatetimeToISO(e.target.value) })
+                      setExam({ ...exam, startAt: localDatetimeToISO(e.target.value) })
                     }
                     style={inputStyle}
                   />
@@ -374,10 +361,10 @@ export default function AdminExamDetailPage() {
                     type="number"
                     min={1}
                     step={1}
-                    value={(exam as any).durationMinutes ?? ""}
+                    value={exam.durationMinutes ?? ""}
                     onChange={(e) =>
                       setExam({
-                        ...(exam as any),
+                        ...exam,
                         durationMinutes: e.target.value === "" ? null : Number(e.target.value),
                       })
                     }
@@ -396,9 +383,7 @@ export default function AdminExamDetailPage() {
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-                    Tasks (questions)
-                  </div>
+                  <div className="section-title">Tasks (questions)</div>
                   <div className="small" style={{ marginTop: 6 }}>
                     Add questions with an order, mark, and correct answer (admin-only).
                   </div>
@@ -462,7 +447,7 @@ export default function AdminExamDetailPage() {
                   <div style={{ display: "grid", gap: 12 }}>
                     {tasks.map((t) => {
                       const key = keysByTaskId.get(t.id);
-                      const correctAnswer = (key as any)?.correctAnswer as string | undefined;
+                      const correctAnswer = key?.correctAnswer;
 
                       return (
                         <div
@@ -474,7 +459,7 @@ export default function AdminExamDetailPage() {
                             gap: 6,
                           }}
                         >
-                          <div style={{ fontWeight: 900 }}>
+                          <div style={{ fontWeight: 760 }}>
                             #{t.order} • {t.mark} points
                           </div>
 
@@ -483,7 +468,7 @@ export default function AdminExamDetailPage() {
                           </div>
 
                           <div className="small" style={{ opacity: 0.85 }}>
-                            <span style={{ fontWeight: 800 }}>Correct answer:</span>{" "}
+                            <span style={{ fontWeight: 700 }}>Correct answer:</span>{" "}
                             {correctAnswer ? (
                               <span>{correctAnswer}</span>
                             ) : (

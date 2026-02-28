@@ -6,10 +6,14 @@ import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { formatWhen, toTimestamp } from "@/lib/dateTime";
+import { getExamState, getExamWindow } from "@/lib/examWindow";
+import { isAdmin as checkIsAdmin } from "@/lib/isAdmin";
+import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser, signOut } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -18,49 +22,6 @@ type Exam = Schema["MockExam"]["type"];
 type ExamRequest = Schema["ExamRequest"]["type"];
 type ExamAccess = Schema["ExamAccess"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
-
-async function checkIsAdmin() {
-  const session = await fetchAuthSession();
-  const groups =
-    (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) ?? [];
-  return groups.includes("Admin");
-}
-
-function notNull<T>(x: T | null | undefined): x is T {
-  return x != null;
-}
-
-function formatWhen(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function getWindow(exam: any) {
-  const startIso = exam?.startAt as string | undefined;
-  const dur = Number(exam?.durationMinutes ?? 0);
-
-  const startMs = startIso ? new Date(startIso).getTime() : NaN;
-  const endMs =
-    Number.isFinite(startMs) && Number.isFinite(dur) ? startMs + dur * 60_000 : NaN;
-
-  return { startMs, endMs };
-}
-
-function getExamState(exam: any, nowMs: number) {
-  const { startMs, endMs } = getWindow(exam);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return "unknown";
-  if (nowMs < startMs) return "before";
-  if (nowMs >= startMs && nowMs < endMs) return "during";
-  return "after";
-}
 
 function GrayButton({ label, title }: { label: string; title?: string }) {
   return (
@@ -111,7 +72,7 @@ export default function DashboardPage() {
   const accessByExamId = useMemo(() => {
     const m = new Map<string, ExamAccess>();
     for (const a of access) {
-      const examId = (a as any).examId as string | undefined;
+      const examId = a.examId;
       if (examId) m.set(examId, a);
     }
     return m;
@@ -120,7 +81,7 @@ export default function DashboardPage() {
   const requestByExamId = useMemo(() => {
     const m = new Map<string, ExamRequest>();
     for (const r of requests) {
-      const examId = (r as any).examId as string | undefined;
+      const examId = r.examId;
       if (examId) m.set(examId, r);
     }
     return m;
@@ -134,44 +95,58 @@ export default function DashboardPage() {
       .filter(notNull)
       .slice()
       .sort((a, b) => {
-        const ax = new Date((a as any).submittedAt ?? 0).getTime();
-        const bx = new Date((b as any).submittedAt ?? 0).getTime();
+        const ax = toTimestamp(a.submittedAt);
+        const bx = toTimestamp(b.submittedAt);
         return bx - ax;
       });
 
     for (const a of sorted) {
-      const examId = (a as any).examId as string | undefined;
+      const examId = a.examId;
       if (!examId) continue;
       if (!m.has(examId)) m.set(examId, a);
     }
     return m;
   }, [attempts]);
 
+  const completedCount = latestAttemptByExamId.size;
+  const upcomingCount = useMemo(
+    () => exams.filter((exam) => getExamState(exam, nowMs) === "before").length,
+    [exams, nowMs]
+  );
+  const pendingCount = useMemo(
+    () => requests.filter((r) => r.status === "PENDING").length,
+    [requests]
+  );
+
   async function refreshStudentState(userId: string) {
-    const reqRes = await client.models.ExamRequest.list({
-      filter: { owner: { eq: userId } },
-      limit: 500,
-    });
+    const [reqRes, accRes, attRes] = await Promise.all([
+      client.models.ExamRequest.list({
+        filter: { owner: { eq: userId } },
+        limit: 500,
+      }),
+      client.models.ExamAccess.list({
+        filter: { owner: { eq: userId } },
+        limit: 500,
+      }),
+      client.models.ExamAttempt.list({
+        filter: { userId: { eq: userId } },
+        limit: 500,
+      }),
+    ]);
+
     if (reqRes.errors?.length) console.error(reqRes.errors);
     setRequests((reqRes.data ?? []).filter(notNull));
 
-    const accRes = await client.models.ExamAccess.list({
-      filter: { owner: { eq: userId } },
-      limit: 500,
-    });
     if (accRes.errors?.length) console.error(accRes.errors);
     setAccess((accRes.data ?? []).filter(notNull));
 
-    // attempts (so we can show results + lock review until end)
-    const attRes = await client.models.ExamAttempt.list({
-      filter: { userId: { eq: userId } },
-      limit: 500,
-    });
     if (attRes.errors?.length) console.error(attRes.errors);
     setAttempts((attRes.data ?? []).filter(notNull));
   }
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
 
@@ -185,14 +160,17 @@ export default function DashboardPage() {
         router.replace("/login");
         return;
       }
+      if (cancelled) return;
 
       setLoginId(login);
 
       const admin = await checkIsAdmin();
+      if (cancelled) return;
       setIsAdmin(admin);
 
       const profileRes = await client.models.UserProfile.get({ id: userId });
       if (profileRes.errors?.length) console.error(profileRes.errors);
+      if (cancelled) return;
 
       const p = profileRes.data ?? null;
       if (!p) {
@@ -203,6 +181,7 @@ export default function DashboardPage() {
 
       const examsRes = await client.models.MockExam.list({ limit: 200 });
       if (examsRes.errors?.length) console.error(examsRes.errors);
+      if (cancelled) return;
       setExams((examsRes.data ?? []).filter(notNull));
 
       if (!admin) {
@@ -212,12 +191,17 @@ export default function DashboardPage() {
         setAccess([]);
         setAttempts([]);
       }
+      if (cancelled) return;
 
       setLoading(false);
     })().catch((e) => {
       console.error(e);
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function requestAccess(exam: Exam) {
@@ -237,7 +221,7 @@ export default function DashboardPage() {
       admissionType: exam.admissionType,
       status: "PENDING",
       requestedAt: new Date().toISOString(),
-    } as any);
+    });
 
     if (res.errors?.length) {
       console.error(res.errors);
@@ -251,11 +235,11 @@ export default function DashboardPage() {
   async function deleteRequest(req: ExamRequest) {
     if (!confirm("Delete this request?")) return;
 
-    const owner = (req as any).owner as string | undefined;
-    const examId = (req as any).examId as string | undefined;
+    const owner = req.owner;
+    const examId = req.examId;
     if (!owner || !examId) return;
 
-    const res = await client.models.ExamRequest.delete({ owner, examId } as any);
+    const res = await client.models.ExamRequest.delete({ owner, examId });
     if (res.errors?.length) {
       console.error(res.errors);
       alert("Failed to delete request.");
@@ -263,7 +247,7 @@ export default function DashboardPage() {
     }
 
     setRequests((prev) =>
-      prev.filter((r) => !((r as any).owner === owner && (r as any).examId === examId))
+      prev.filter((r) => !(r.owner === owner && r.examId === examId))
     );
   }
 
@@ -291,13 +275,13 @@ export default function DashboardPage() {
         {loading ? (
           <p className="small">Loading dashboard…</p>
         ) : (
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>
+          <div className="panel-stack">
+            <div className="panel-top-row">
+              <div className="page-title">
                 Welcome, {profile?.firstName} {profile?.lastName}
               </div>
 
-              <div style={{ display: "flex", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
+              <div className="panel-actions">
                 {isAdmin && (
                   <>
                     <OutlineButton onClick={() => router.push("/admin/exams")}>
@@ -312,9 +296,42 @@ export default function DashboardPage() {
             </div>
 
             <Card>
+              <div className="section-title">Your learning pulse</div>
+              <div className="page-subtitle" style={{ marginTop: 6 }}>
+                Quick overview of your current exam activity.
+              </div>
+
+              <div className="metric-grid">
+                <div className="metric-tile soft-blue">
+                  <div className="metric-label">Available exams</div>
+                  <div className="metric-value">{exams.length}</div>
+                  <div className="metric-helper">
+                    {upcomingCount} upcoming
+                  </div>
+                </div>
+
+                <div className="metric-tile soft-lilac">
+                  <div className="metric-label">Completed</div>
+                  <div className="metric-value">{completedCount}</div>
+                  <div className="metric-helper">
+                    Exams with at least one submission
+                  </div>
+                </div>
+
+                <div className="metric-tile soft-mint">
+                  <div className="metric-label">Access status</div>
+                  <div className="metric-value">{isAdmin ? "Admin" : access.length}</div>
+                  <div className="metric-helper">
+                    {isAdmin ? "You can manage all exams" : `${pendingCount} pending request(s)`}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.4 }}>
+                  <div className="section-title-lg">
                     Available mock exams
                   </div>
                   <div className="small" style={{ marginTop: 6 }}>
@@ -323,7 +340,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              <div className="exam-list">
                 {exams.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
                     No exams yet. (An Admin must create them.)
@@ -332,36 +349,28 @@ export default function DashboardPage() {
                   exams.map((e) => {
                     const hasAccess = accessByExamId.has(e.id);
                     const req = requestByExamId.get(e.id);
-                    const status = (req as any)?.status as string | undefined;
+                    const status = req?.status;
 
-                    const examState = getExamState(e as any, nowMs);
+                    const examState = getExamState(e, nowMs);
 
                     // latest attempt (if submitted)
                     const latestAttempt = latestAttemptByExamId.get(e.id);
 
                     // ✅ Review lock logic (same as stats page)
-                    const { endMs } = getWindow(e as any);
+                    const { endMs } = getExamWindow(e);
                     const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
 
                     return (
-                      <div
-                        key={e.id}
-                        style={{
-                          borderTop: "1px solid var(--border)",
-                          paddingTop: 12,
-                          display: "grid",
-                          gap: 6,
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>{e.title}</div>
+                      <div key={e.id} className="exam-item">
+                        <div className="exam-item-title">{e.title}</div>
                         <div className="small">Admission type: {e.admissionType}</div>
 
                         <div className="small" style={{ opacity: 0.85 }}>
-                          Starts: {formatWhen((e as any).startAt)} • Duration:{" "}
-                          {(e as any).durationMinutes ?? "—"} min
+                          Starts: {formatWhen(e.startAt)} • Duration: {e.durationMinutes ?? "—"}{" "}
+                          min
                         </div>
 
-                        <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                        <div className="exam-actions">
                           {isAdmin ? (
                             <OutlineButton onClick={() => router.push(`/admin/exams/${e.id}`)}>
                               Manage exam
@@ -388,7 +397,7 @@ export default function DashboardPage() {
                             ) : examState === "before" ? (
                               <GrayButton
                                 label="Not started"
-                                title={`Starts at ${formatWhen((e as any).startAt)}`}
+                                title={`Starts at ${formatWhen(e.startAt)}`}
                               />
                             ) : (
                               <GrayButton label="Exam ended" />

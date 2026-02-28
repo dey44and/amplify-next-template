@@ -6,35 +6,17 @@ import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { formatWhen } from "@/lib/dateTime";
+import { isAdmin } from "@/lib/isAdmin";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser, signOut } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
 type ExamRequest = Schema["ExamRequest"]["type"];
-
-async function isAdmin() {
-  const session = await fetchAuthSession();
-  const groups =
-    (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) ?? [];
-  return groups.includes("Admin");
-}
-
-function formatWhen(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function AdminRequestsPage() {
   const router = useRouter();
@@ -99,8 +81,8 @@ export default function AdminRequestsPage() {
   }, [router]);
 
   async function decide(req: ExamRequest, status: "APPROVED" | "REJECTED") {
-    const owner = (req as any).owner as string | undefined;
-    const examId = (req as any).examId as string | undefined;
+    const owner = req.owner;
+    const examId = req.examId;
     if (!owner || !examId) return;
 
     const key = `${owner}::${examId}`;
@@ -123,7 +105,7 @@ export default function AdminRequestsPage() {
 
       // Remove from UI immediately
       setRequests((prev) =>
-        prev.filter((r) => !((r as any).owner === owner && (r as any).examId === examId))
+        prev.filter((r) => !(r.owner === owner && r.examId === examId))
       );
     } finally {
       setWorkingKey(null);
@@ -163,17 +145,15 @@ export default function AdminRequestsPage() {
       />
 
       <PageShell>
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>
-              Admin • Requests
-            </div>
+        <div className="panel-stack">
+          <div className="panel-top-row">
+            <div className="page-title">Admin • Requests</div>
 
             <div className="small" style={{ marginLeft: 8 }}>
               Approve or reject exam access requests.
             </div>
 
-            <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="panel-actions">
               <OutlineButton onClick={() => refresh()} disabled={loading}>
                 Refresh
               </OutlineButton>
@@ -181,9 +161,7 @@ export default function AdminRequestsPage() {
           </div>
 
           <Card>
-            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-              Pending requests
-            </div>
+            <div className="section-title">Pending requests</div>
 
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {loading ? (
@@ -196,8 +174,8 @@ export default function AdminRequestsPage() {
                 </p>
               ) : (
                 requests.map((r) => {
-                  const owner = (r as any).owner as string | undefined;
-                  const examId = (r as any).examId as string | undefined;
+                  const owner = r.owner;
+                  const examId = r.examId;
                   const key = `${owner ?? "?"}::${examId ?? "?"}`;
 
                   return (
@@ -210,7 +188,7 @@ export default function AdminRequestsPage() {
                         gap: 8,
                       }}
                     >
-                      <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>
+                      <div style={{ fontWeight: 760, letterSpacing: -0.2 }}>
                         {examTitleById.get(examId ?? "") ?? examId ?? "Unknown exam"}
                       </div>
 
@@ -223,7 +201,7 @@ export default function AdminRequestsPage() {
                       </div>
 
                       <div className="small" style={{ opacity: 0.85 }}>
-                        Requested: {formatWhen((r as any).requestedAt)}
+                        Requested: {formatWhen(r.requestedAt)}
                       </div>
 
                       <input

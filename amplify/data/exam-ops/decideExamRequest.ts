@@ -4,33 +4,22 @@ import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/decideExamRequest";
+import { getIdentitySub, isAdminEvent } from "./_shared";
 
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
 Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
 
-function getIdentity(event: any) {
-  // Cast once; TS identity union is strict
-  return event.identity as any;
-}
-
-function isAdmin(event: any) {
-  const identity = getIdentity(event);
-  const groups =
-    identity?.groups ??
-    identity?.claims?.["cognito:groups"] ??
-    [];
-  const arr = Array.isArray(groups) ? groups : typeof groups === "string" ? [groups] : [];
-  return arr.includes("Admin");
-}
-
-function actorSub(event: any) {
-  const identity = getIdentity(event);
-  return identity?.sub ?? identity?.claims?.sub ?? identity?.username ?? "admin";
+function actorSub(event: Parameters<Schema["decideExamRequest"]["functionHandler"]>[0]) {
+  try {
+    return getIdentitySub(event);
+  } catch {
+    return "admin";
+  }
 }
 
 export const handler: Schema["decideExamRequest"]["functionHandler"] = async (event) => {
-  if (!isAdmin(event)) throw new Error("FORBIDDEN");
+  if (!isAdminEvent(event)) throw new Error("FORBIDDEN");
 
   const { owner, examId, status, note } = event.arguments;
 
@@ -49,7 +38,7 @@ export const handler: Schema["decideExamRequest"]["functionHandler"] = async (ev
     decidedAt: now,
     decidedBy,
     note: note ?? null,
-  } as any);
+  });
 
   if (!reqUpdate.data) throw new Error("REQUEST_NOT_FOUND");
 

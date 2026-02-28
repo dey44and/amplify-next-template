@@ -2,14 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
-
-async function checkIsAdmin() {
-  const session = await fetchAuthSession();
-  const groups =
-    (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) ?? [];
-  return groups.includes("Admin");
-}
+import { getCurrentUser } from "aws-amplify/auth";
+import { isAdmin as checkIsAdmin } from "@/lib/isAdmin";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();

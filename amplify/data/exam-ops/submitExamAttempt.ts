@@ -4,64 +4,22 @@ import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/submitExamAttempt"; // must match your function name
+import { getCorrectAnswerForTask, getIdentitySub, normalizeAnswer } from "./_shared";
 
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
 Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
 
-function getSub(event: any): string {
-  const identity = event.identity as any;
-  const sub = identity?.sub ?? identity?.claims?.sub ?? identity?.username;
-  if (!sub) throw new Error("UNAUTHENTICATED");
-  return sub;
-}
-
-function normalizeAnswer(a: unknown) {
-  return String(a ?? "").trim();
-}
-
-async function getCorrectAnswerForTask(taskId: string): Promise<string> {
-  const m: any = client.models.TaskKey;
-
-  // ✅ Prefer secondary-index query if available (fast + correct)
-  const candidateFns = [
-    "listTaskKeysByTaskId",
-    "taskKeysByTaskId",
-    "listByTaskId",
-  ];
-
-  for (const fnName of candidateFns) {
-    if (typeof m?.[fnName] === "function") {
-      const r = await m[fnName]({ taskId, limit: 1 });
-      const item = (r?.data ?? [])[0];
-      return String((item as any)?.correctAnswer ?? "").trim();
-    }
-  }
-
-  // ✅ Fallback: scan without limit:1 (works for small tables)
-  const r = await client.models.TaskKey.list({
-    filter: { taskId: { eq: taskId } },
-    limit: 500, // do NOT set 1
-  });
-
-  if (r.errors?.length) {
-    console.error("TaskKey.list errors:", r.errors);
-  }
-
-  const item = (r.data ?? []).find(Boolean);
-  return String((item as any)?.correctAnswer ?? "").trim();
-}
-
 const SUBMIT_GRACE_MS = 2 * 60_000; // allow submit up to 2 minutes after end
 
 export const handler: Schema["submitExamAttempt"]["functionHandler"] = async (event) => {
-  const userId = getSub(event);
+  const userId = getIdentitySub(event);
   const { examId, answersJson, startedAt } = event.arguments;
 
   if (!examId) throw new Error("EXAM_ID_REQUIRED");
 
   // 1) Access check (secured variant)
-  const accessRes = await client.models.ExamAccess.get({ owner: userId, examId } as any);
+  const accessRes = await client.models.ExamAccess.get({ owner: userId, examId });
   if (!accessRes.data) throw new Error("NOT_AUTHORIZED_FOR_EXAM");
 
   // 2) Load exam + time window
@@ -69,8 +27,8 @@ export const handler: Schema["submitExamAttempt"]["functionHandler"] = async (ev
   const exam = examRes.data;
   if (!exam) throw new Error("EXAM_NOT_FOUND");
 
-  const startAtIso = (exam as any).startAt as string | undefined;
-  const duration = Number((exam as any).durationMinutes ?? 0);
+  const startAtIso = exam.startAt;
+  const duration = Number(exam.durationMinutes ?? 0);
 
   if (!startAtIso || !Number.isFinite(duration) || duration <= 0) {
     throw new Error("EXAM_INVALID_WINDOW");
@@ -118,7 +76,7 @@ export const handler: Schema["submitExamAttempt"]["functionHandler"] = async (ev
     limit: 500,
   });
   const tasks = (tasksRes.data ?? [])
-    .filter(Boolean)
+    .filter((task): task is NonNullable<typeof task> => !!task)
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
@@ -133,7 +91,7 @@ export const handler: Schema["submitExamAttempt"]["functionHandler"] = async (ev
     const userAnswer = normalizeAnswer(answers[t.id]);
     if (!userAnswer) continue;
 
-    const correct = await getCorrectAnswerForTask(t.id);
+    const correct = await getCorrectAnswerForTask(client.models.TaskKey, t.id);
 
     if (correct && userAnswer.toLowerCase() === correct.toLowerCase()) {
       score += mark;
@@ -152,14 +110,14 @@ export const handler: Schema["submitExamAttempt"]["functionHandler"] = async (ev
   const attemptRes = await client.models.ExamAttempt.create({
     userId,
     examId,
-    admissionType: (exam as any).admissionType ?? "",
+    admissionType: exam.admissionType ?? "",
     startedAt: startedAtIso,
     endedAt: endedAtIso,
     submittedAt: nowIso,
     score,
     maxScore,
     answersJson: JSON.stringify(answers),
-  } as any);
+  });
 
   if (!attemptRes.data) throw new Error("FAILED_TO_CREATE_ATTEMPT");
 

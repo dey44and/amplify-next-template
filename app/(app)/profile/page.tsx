@@ -160,12 +160,12 @@ export default function ProfilePage() {
       />
 
       <PageShell>
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: -0.8 }}>
+        <div className="panel-stack">
+          <div className="panel-top-row">
+            <div className="page-title-xl">
               {existing ? "Edit profile" : "Complete your profile"}
             </div>
-            <div className="small">This information is visible only to you.</div>
+            <div className="page-subtitle">This information is visible only to you.</div>
           </div>
 
           <Card>
@@ -185,20 +185,12 @@ export default function ProfilePage() {
                   ] as const
                 ).map(([k, label]) => (
                   <div key={k} style={{ display: "grid", gap: 6 }}>
-                    <label className="small" style={{ color: "var(--fg)", fontWeight: 700 }}>
-                      {label}
-                    </label>
+                    <label className="field-label">{label}</label>
                     <input
                       value={form[k]}
                       onChange={(e) => setForm({ ...form, [k]: e.target.value })}
                       disabled={saving}
-                      style={{
-                        padding: "12px 12px",
-                        borderRadius: 12,
-                        border: "1px solid var(--border)",
-                        outline: "none",
-                        fontSize: 14,
-                      }}
+                      className="field-input"
                     />
                   </div>
                 ))}
@@ -220,18 +212,7 @@ export default function ProfilePage() {
           </Card>
         </div>
         <div style={{ marginTop: 6 }}>
-          <button
-            onClick={handleDeleteAccount}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-              fontSize: 13,
-              color: "rgba(0,0,0,0.55)",
-              textDecoration: "underline",
-            }}
-          >
+          <button onClick={handleDeleteAccount} className="link-muted">
             Delete account
           </button>
         </div>

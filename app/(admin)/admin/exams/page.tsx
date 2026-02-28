@@ -6,33 +6,15 @@ import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { formatWhen } from "@/lib/dateTime";
+import { isAdmin } from "@/lib/isAdmin";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser, signOut } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 type Exam = Schema["MockExam"]["type"];
-
-async function isAdmin() {
-  const session = await fetchAuthSession();
-  const groups =
-    (session.tokens?.idToken?.payload?.["cognito:groups"] as string[] | undefined) ?? [];
-  return groups.includes("Admin");
-}
-
-function formatWhen(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function AdminExamsPage() {
   const router = useRouter();
@@ -174,11 +156,9 @@ export default function AdminExamsPage() {
       />
 
       <PageShell>
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>
-              Admin • Exams
-            </div>
+        <div className="panel-stack">
+          <div className="panel-top-row">
+            <div className="page-title">Admin • Exams</div>
 
             <div className="small" style={{ marginLeft: 8 }}>
               Create and manage mock exams.
@@ -187,9 +167,7 @@ export default function AdminExamsPage() {
 
           {/* Create */}
           <Card>
-            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-              Create exam
-            </div>
+            <div className="section-title">Create exam</div>
 
             <div style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 720 }}>
               <input
@@ -247,10 +225,8 @@ export default function AdminExamsPage() {
           {/* List */}
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-                  Existing exams
-                </div>
+                <div>
+                <div className="section-title">Existing exams</div>
                 <div className="small" style={{ marginTop: 6 }}>
                   Click an exam to manage tasks (questions).
                 </div>
@@ -280,13 +256,12 @@ export default function AdminExamsPage() {
                       gap: 6,
                     }}
                   >
-                    <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>{e.title}</div>
+                    <div style={{ fontWeight: 760, letterSpacing: -0.2 }}>{e.title}</div>
 
                     <div className="small">Admission type: {e.admissionType}</div>
 
                     <div className="small" style={{ opacity: 0.85 }}>
-                      Starts: {formatWhen((e as any).startAt)} • Duration:{" "}
-                      {(e as any).durationMinutes ?? "—"} min
+                      Starts: {formatWhen(e.startAt)} • Duration: {e.durationMinutes ?? "—"} min
                     </div>
 
                     <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>

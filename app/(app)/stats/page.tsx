@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { formatWhen, toTimestamp } from "@/lib/dateTime";
+import { getExamWindow } from "@/lib/examWindow";
+import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
@@ -15,23 +18,6 @@ const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
-
-function notNull<T>(x: T | null | undefined): x is T {
-  return x != null;
-}
-
-function formatWhen(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function GrayButton({ label, title }: { label: string; title?: string }) {
   return (
@@ -58,14 +44,12 @@ function GrayButton({ label, title }: { label: string; title?: string }) {
   );
 }
 
-function getWindow(exam: any) {
-  const startIso = exam?.startAt as string | undefined;
-  const dur = Number(exam?.durationMinutes ?? 0);
+function getExamStartMs(exam: Pick<Exam, "startAt">) {
+  return toTimestamp(exam.startAt);
+}
 
-  const startMs = startIso ? new Date(startIso).getTime() : NaN;
-  const endMs = Number.isFinite(startMs) && Number.isFinite(dur) ? startMs + dur * 60_000 : NaN;
-
-  return { startMs, endMs };
+function getAttemptSubmittedAtMs(attempt: Pick<ExamAttempt, "submittedAt">) {
+  return toTimestamp(attempt.submittedAt);
 }
 
 export default function StatsPage() {
@@ -85,6 +69,8 @@ export default function StatsPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
 
@@ -99,34 +85,42 @@ export default function StatsPage() {
         router.replace("/login");
         return;
       }
+      if (cancelled) return;
       setLoginId(login);
 
-      // load exams
-      const examsRes = await client.models.MockExam.list({ limit: 500 });
+      const [examsRes, attemptsRes] = await Promise.all([
+        client.models.MockExam.list({ limit: 500 }),
+        // load attempts for current user
+        // (If you later have a generated secondary-index query, you can swap to it.)
+        client.models.ExamAttempt.list({
+          filter: { userId: { eq: userId } },
+          limit: 500,
+        }),
+      ]);
+      if (cancelled) return;
+
       if (examsRes.errors?.length) console.error(examsRes.errors);
       setExams((examsRes.data ?? []).filter(notNull));
 
-      // load attempts for current user
-      // (If you later have a generated secondary-index query, you can swap to it.)
-      const attemptsRes = await client.models.ExamAttempt.list({
-        filter: { userId: { eq: userId } },
-        limit: 500,
-      });
       if (attemptsRes.errors?.length) console.error(attemptsRes.errors);
       setAttempts((attemptsRes.data ?? []).filter(notNull));
 
       setLoading(false);
     })().catch((e) => {
       console.error(e);
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const attemptsByExamId = useMemo(() => {
     const m = new Map<string, ExamAttempt[]>();
 
     for (const a of attempts) {
-      const examId = (a as any).examId as string | undefined;
+      const examId = a.examId;
       if (!examId) continue;
       const arr = m.get(examId) ?? [];
       arr.push(a);
@@ -136,8 +130,8 @@ export default function StatsPage() {
     // sort each bucket by submittedAt desc
     m.forEach((arr, k) => {
       arr.sort((x: ExamAttempt, y: ExamAttempt) => {
-        const ax = new Date((x as any).submittedAt ?? 0).getTime();
-        const ay = new Date((y as any).submittedAt ?? 0).getTime();
+        const ax = getAttemptSubmittedAtMs(x);
+        const ay = getAttemptSubmittedAtMs(y);
         return ay - ax;
       });
       m.set(k, arr);
@@ -145,6 +139,42 @@ export default function StatsPage() {
 
     return m;
   }, [attempts]);
+
+  const examsSortedByStartDesc = useMemo(() => {
+    return exams
+      .slice()
+      .sort((a: Exam, b: Exam) => getExamStartMs(b) - getExamStartMs(a));
+  }, [exams]);
+
+  const latestAttempts = useMemo(() => {
+    return Array.from(attemptsByExamId.values())
+      .map((arr) => arr[0] ?? null)
+      .filter(notNull);
+  }, [attemptsByExamId]);
+
+  const attemptedExamsCount = latestAttempts.length;
+  const averagePercent = useMemo(() => {
+    if (latestAttempts.length === 0) return 0;
+    const total = latestAttempts.reduce((sum, attempt) => {
+      const score = Number(attempt.score ?? 0);
+      const max = Number(attempt.maxScore ?? 0);
+      if (!Number.isFinite(score) || !Number.isFinite(max) || max <= 0) return sum;
+      return sum + (score / max) * 100;
+    }, 0);
+    return Math.round(total / latestAttempts.length);
+  }, [latestAttempts]);
+
+  const reviewLockedCount = useMemo(() => {
+    let count = 0;
+    for (const exam of examsSortedByStartDesc) {
+      const latest = attemptsByExamId.get(exam.id)?.[0];
+      if (!latest) continue;
+      const { endMs } = getExamWindow(exam);
+      const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
+      if (!reviewUnlocked) count += 1;
+    }
+    return count;
+  }, [attemptsByExamId, examsSortedByStartDesc, nowMs]);
 
   return (
     <>
@@ -170,11 +200,11 @@ export default function StatsPage() {
         {loading ? (
           <p className="small">Loading stats…</p>
         ) : (
-          <div style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>My stats</div>
+          <div className="panel-stack">
+            <div className="panel-top-row">
+              <div className="page-title">My stats</div>
 
-              <div style={{ marginLeft: "auto" }}>
+              <div className="panel-actions">
                 <OutlineButton onClick={() => router.push("/dashboard")}>
                   Back to dashboard
                 </OutlineButton>
@@ -182,65 +212,65 @@ export default function StatsPage() {
             </div>
 
             <Card>
-              <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-                Results per exam
+              <div className="section-title">Progress snapshot</div>
+              <div className="page-subtitle" style={{ marginTop: 6 }}>
+                A quick look at how your latest attempts are going.
               </div>
+
+              <div className="metric-grid">
+                <div className="metric-tile soft-blue">
+                  <div className="metric-label">Attempted exams</div>
+                  <div className="metric-value">{attemptedExamsCount}</div>
+                  <div className="metric-helper">From {exams.length} available exam(s)</div>
+                </div>
+
+                <div className="metric-tile soft-lilac">
+                  <div className="metric-label">Average score</div>
+                  <div className="metric-value">{averagePercent}%</div>
+                  <div className="metric-helper">Based on latest attempt per exam</div>
+                </div>
+
+                <div className="metric-tile soft-mint">
+                  <div className="metric-label">Locked reviews</div>
+                  <div className="metric-value">{reviewLockedCount}</div>
+                  <div className="metric-helper">Unlock automatically after exam end</div>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="section-title">Results per exam</div>
 
               <div className="small" style={{ marginTop: 6, opacity: 0.8 }}>
                 Results appear after you submit. Reviews unlock after the exam time window ends.
               </div>
 
-              <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              <div className="exam-list">
                 {exams.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
                     No exams available.
                   </p>
                 ) : (
-                  exams
-                    .slice()
-                    .sort((a: Exam, b: Exam) => {
-                      const sa = new Date((a as any).startAt ?? 0).getTime();
-                      const sb = new Date((b as any).startAt ?? 0).getTime();
-                      return sb - sa;
-                    })
-                    .map((e) => {
+                  examsSortedByStartDesc.map((e) => {
                       const examAttempts = attemptsByExamId.get(e.id) ?? [];
                       const latest = examAttempts[0] ?? null;
 
-                      const best =
-                        examAttempts.length === 0
-                          ? null
-                          : examAttempts.reduce((acc: ExamAttempt, cur: ExamAttempt) => {
-                              const s1 = Number((acc as any).score ?? 0);
-                              const s2 = Number((cur as any).score ?? 0);
-                              return s2 > s1 ? cur : acc;
-                            }, examAttempts[0]);
-
-                      const { endMs } = getWindow(e as any);
+                      const { endMs } = getExamWindow(e);
                       const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
 
                       return (
-                        <div
-                          key={e.id}
-                          style={{
-                            borderTop: "1px solid var(--border)",
-                            paddingTop: 12,
-                            display: "grid",
-                            gap: 6,
-                          }}
-                        >
-                          <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>{e.title}</div>
+                        <div key={e.id} className="exam-item">
+                          <div className="exam-item-title">{e.title}</div>
                           <div className="small">Admission type: {e.admissionType}</div>
 
                           <div className="small" style={{ opacity: 0.85 }}>
-                            Starts: {formatWhen((e as any).startAt)} • Duration:{" "}
-                            {(e as any).durationMinutes ?? "—"} min
+                            Starts: {formatWhen(e.startAt)} • Duration: {e.durationMinutes ?? "—"} min
                           </div>
 
                           {latest ? (
                             <div className="small" style={{ opacity: 0.85 }}>
-                              Submission: {formatWhen((latest as any).submittedAt)} • Score:{" "}
-                              {(latest as any).score} / {(latest as any).maxScore}
+                              Submission: {formatWhen(latest.submittedAt)} • Score: {latest.score} /{" "}
+                              {latest.maxScore}
                             </div>
                           ) : (
                             <div className="small" style={{ opacity: 0.85 }}>
@@ -248,7 +278,7 @@ export default function StatsPage() {
                             </div>
                           )}
 
-                          <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+                          <div className="exam-actions">
                             {/* <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
                               Go to exam
                             </OutlineButton> */}

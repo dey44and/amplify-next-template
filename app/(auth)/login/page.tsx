@@ -38,12 +38,12 @@ export default function LoginPage() {
         <div style={{ width: "min(520px, 100%)" }}>
           {/* Brand */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ fontWeight: 900, letterSpacing: -0.5, fontSize: 32 }}>Mock Exams</div>
+            <div style={{ fontWeight: 780, letterSpacing: -0.5, fontSize: 32 }}>Mock Exams</div>
           </div>
 
           {/* Title + copy */}
           <div style={{ marginTop: 26, marginBottom: 16 }}>
-            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -1 }}>
+            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: -1 }}>
               Ready to start your{" "}
               <span>success story</span>?
             </div>
@@ -51,7 +51,7 @@ export default function LoginPage() {
 
           {/* Form container */}
           <Card>
-            <div style={{ marginBottom: 10, fontWeight: 800 }}>Sign in / Sign up</div>
+            <div style={{ marginBottom: 10, fontWeight: 700 }}>Sign in / Sign up</div>
 
             <Authenticator
               hideSignUp={false}
@@ -130,7 +130,7 @@ export default function LoginPage() {
           </div>
 
           <div style={{ marginTop: 14 }}>
-            <div style={{ fontWeight: 900, letterSpacing: -0.3 }}>
+            <div style={{ fontWeight: 760, letterSpacing: -0.3 }}>
               Practice. Measure. Improve.
             </div>
             <div className="small" style={{ marginTop: 6, lineHeight: 1.5 }}>

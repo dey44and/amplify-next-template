@@ -6,25 +6,15 @@ import { useParams, useRouter } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { formatWhen } from "@/lib/dateTime";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
 import { getCurrentUser, signOut } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
-
-function formatWhen(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+type ExamReview = Schema["ExamReview"]["type"];
+type ReviewItem = Schema["ReviewItem"]["type"];
 
 export default function ExamReviewPage() {
   const router = useRouter();
@@ -35,7 +25,7 @@ export default function ExamReviewPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [review, setReview] = useState<any>(null);
+  const [review, setReview] = useState<ExamReview | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -74,9 +64,11 @@ export default function ExamReviewPage() {
 
   const score = Number(review?.score ?? 0);
   const maxScore = Number(review?.maxScore ?? 0);
-  const submittedAt = (review?.submittedAt as string | null | undefined) ?? null;
+  const submittedAt = review?.submittedAt ?? null;
 
-  const items: any[] = Array.isArray(review?.items) ? review.items : [];
+  const items: ReviewItem[] = Array.isArray(review?.items)
+    ? review.items.filter((item): item is ReviewItem => !!item)
+    : [];
 
   const correctCount = items.filter((x) => !!x?.isCorrect).length;
 
@@ -105,9 +97,7 @@ export default function ExamReviewPage() {
           <p className="small">Loading review…</p>
         ) : err ? (
           <Card>
-            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-              Could not load review
-            </div>
+            <div className="section-title">Could not load review</div>
             <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
               {err}
             </div>
@@ -120,17 +110,15 @@ export default function ExamReviewPage() {
         ) : !review ? (
           <p className="small">No review data.</p>
         ) : (
-          <div style={{ display: "grid", gap: 14 }}>
+          <div className="panel-stack">
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.7 }}>
-                Exam review
-              </div>
+            <div className="panel-top-row">
+              <div className="page-title">Exam review</div>
               <div className="small" style={{ opacity: 0.8 }}>
                 Submitted: {formatWhen(submittedAt)}
               </div>
 
-              <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className="panel-actions">
                 <OutlineButton onClick={() => router.push("/dashboard")}>
                   Back to dashboard
                 </OutlineButton>
@@ -141,9 +129,7 @@ export default function ExamReviewPage() {
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-                    Result
-                  </div>
+                  <div className="section-title">Result</div>
                   <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
                     Correct: {correctCount} / {items.length}
                   </div>
@@ -153,7 +139,7 @@ export default function ExamReviewPage() {
                   <div className="small" style={{ opacity: 0.75 }}>
                     Score
                   </div>
-                  <div style={{ fontSize: 26, fontWeight: 900 }}>
+                  <div style={{ fontSize: 26, fontWeight: 760 }}>
                     {score} / {maxScore}
                   </div>
                 </div>
@@ -162,9 +148,7 @@ export default function ExamReviewPage() {
 
             {/* Breakdown */}
             <Card>
-              <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.3 }}>
-                Answer breakdown
-              </div>
+              <div className="section-title">Answer breakdown</div>
 
               <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
                 {items.length === 0 ? (
@@ -196,7 +180,7 @@ export default function ExamReviewPage() {
                           }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                            <div style={{ fontWeight: 900 }}>
+                            <div style={{ fontWeight: 760 }}>
                               #{order} • {mark} points
                             </div>
                             <div className="small" style={{ opacity: 0.85 }}>
@@ -210,11 +194,11 @@ export default function ExamReviewPage() {
 
                           <div className="small" style={{ display: "grid", gap: 4 }}>
                             <div>
-                              <span style={{ fontWeight: 800 }}>Your answer:</span>{" "}
+                              <span style={{ fontWeight: 700 }}>Your answer:</span>{" "}
                               <span style={{ opacity: 0.85 }}>{userAnswer || "—"}</span>
                             </div>
                             <div>
-                              <span style={{ fontWeight: 800 }}>Correct answer:</span>{" "}
+                              <span style={{ fontWeight: 700 }}>Correct answer:</span>{" "}
                               <span style={{ opacity: 0.85 }}>{correctAnswer || "—"}</span>
                             </div>
                           </div>
