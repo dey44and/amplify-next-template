@@ -21,6 +21,10 @@ type Exam = Schema["MockExam"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
 type AdmissionPerformance = Schema["AdmissionPerformance"]["type"];
 type PerformancePoint = Schema["PerformancePoint"]["type"];
+type AdmissionPerformanceQueryResult = {
+  data?: AdmissionPerformance | null;
+  errors?: unknown[];
+};
 
 type PlotPoint = {
   key: string;
@@ -30,6 +34,68 @@ type PlotPoint = {
 };
 
 const MIN_COHORT_SAMPLE = 5;
+const GET_ADMISSION_PERFORMANCE_GQL = /* GraphQL */ `
+  query GetAdmissionPerformance($admissionType: String) {
+    getAdmissionPerformance(admissionType: $admissionType) {
+      admissionType
+      userTotalCount
+      cohortTotalCount
+      points {
+        bucketStart
+        userAvgPercent
+        userCount
+        cohortAvgPercent
+        cohortCount
+      }
+    }
+  }
+`;
+
+async function fetchAdmissionPerformance(admissionType?: string): Promise<AdmissionPerformanceQueryResult> {
+  const args = admissionType ? { admissionType } : {};
+
+  const typedQueries = client.queries as
+    | {
+        getAdmissionPerformance?: (
+          args?: { admissionType?: string }
+        ) => Promise<AdmissionPerformanceQueryResult>;
+      }
+    | undefined;
+
+  if (typeof typedQueries?.getAdmissionPerformance === "function") {
+    return typedQueries.getAdmissionPerformance(args);
+  }
+
+  const clientWithGraphql = client as unknown as {
+    graphql?: (args: {
+      query: string;
+      variables?: Record<string, unknown>;
+    }) => Promise<{
+      data?: { getAdmissionPerformance?: AdmissionPerformance | null };
+      errors?: unknown[];
+    }>;
+  };
+
+  if (typeof clientWithGraphql.graphql !== "function") {
+    return {
+      errors: [
+        new Error(
+          "Admission performance query is unavailable in the runtime client."
+        ),
+      ],
+    };
+  }
+
+  const raw = await clientWithGraphql.graphql({
+    query: GET_ADMISSION_PERFORMANCE_GQL,
+    variables: args,
+  });
+
+  return {
+    data: raw.data?.getAdmissionPerformance ?? null,
+    errors: raw.errors,
+  };
+}
 
 function GrayButton({ label, title }: { label: string; title?: string }) {
   return (
@@ -78,6 +144,14 @@ function formatBucketLabel(iso?: string | null) {
 function formatPercent(value: number | null) {
   if (value == null || !Number.isFinite(value)) return "—";
   return `${Math.round(value)}%`;
+}
+
+function extractErrorMessage(value: unknown) {
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.errorMessage === "string") return record.errorMessage;
+  return "";
 }
 
 function TrendLinePlot({
@@ -256,23 +330,33 @@ export default function StatsPage() {
     selectedAdmissionType === "ALL" ? undefined : selectedAdmissionType;
 
   useEffect(() => {
+    if (loading) return;
+
     let cancelled = false;
 
     (async () => {
       setTrendLoading(true);
       setTrendError(null);
 
-      const res = await client.queries.getAdmissionPerformance(
-        selectedAdmissionTypeValue
-          ? { admissionType: selectedAdmissionTypeValue }
-          : {}
-      );
+      const res = await fetchAdmissionPerformance(selectedAdmissionTypeValue);
 
       if (cancelled) return;
 
       if (res.errors?.length) {
         console.error(res.errors);
-        setTrendError("Nu am putut încărca comparația de performanță.");
+        const firstMessage = extractErrorMessage(res.errors[0]);
+
+        if (
+          firstMessage.includes(
+            "Admission performance query is unavailable in the runtime client."
+          )
+        ) {
+          setTrendError(
+            "Configurația locală Amplify nu este sincronizată. Regenerază `amplify_outputs.json` și repornește aplicația."
+          );
+        } else {
+          setTrendError("Nu am putut încărca comparația de performanță.");
+        }
         setTrendData(null);
         setTrendLoading(false);
         return;
@@ -292,7 +376,7 @@ export default function StatsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedAdmissionTypeValue, trendRefreshKey]);
+  }, [loading, selectedAdmissionTypeValue, trendRefreshKey]);
 
   const attemptsByExamId = useMemo(() => {
     const m = new Map<string, ExamAttempt[]>();

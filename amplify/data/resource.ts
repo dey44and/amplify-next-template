@@ -98,7 +98,6 @@ const schema = a.schema({
     .authorization((allow) => [
       allow.ownerDefinedIn("userId").identityClaim("sub").to(["create", "read"]),
       allow.group("Admin").to(["read"]),
-      (allow as any).resource(getAdmissionPerformanceFn).to(["read"]),
       // (allow as any).resource(submitExamAttemptFn).to(["create", "read"]),
       // (allow as any).resource(getExamReviewFn).to(["read"]),
     ]),

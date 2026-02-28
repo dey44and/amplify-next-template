@@ -3,10 +3,10 @@ import type { Schema } from "../resource";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
-import { env } from "$amplify/env/getAdmissionPerformance";
+import { getDataClientEnv } from "./_env";
 import { getIdentitySub } from "./_shared";
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(getDataClientEnv());
 Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
 
@@ -51,7 +51,7 @@ function pushAcc(map: Map<string, BucketAcc>, key: string, value: number) {
 
 export const handler: Schema["getAdmissionPerformance"]["functionHandler"] = async (event) => {
   const userId = getIdentitySub(event);
-  const admissionTypeRaw = String(event.arguments.admissionType ?? "").trim();
+  const admissionTypeRaw = String(event.arguments?.admissionType ?? "").trim();
   const admissionType = admissionTypeRaw || null;
 
   const attemptsRes = await client.models.ExamAttempt.list({
