@@ -6,7 +6,7 @@ export function formatWhen(iso?: string | null) {
   if (!iso) return "\u2014";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("ro-RO", {
     year: "numeric",
     month: "short",
     day: "2-digit",

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -13,7 +14,7 @@ import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -59,7 +60,6 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loginId, setLoginId] = useState<string>("");
 
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -117,6 +117,14 @@ export default function DashboardPage() {
     () => requests.filter((r) => r.status === "PENDING").length,
     [requests]
   );
+  const upcomingLabel =
+    upcomingCount === 1
+      ? "1 simulare viitoare"
+      : `${upcomingCount} simulări viitoare`;
+  const pendingLabel =
+    pendingCount === 1
+      ? "1 cerere în așteptare"
+      : `${pendingCount} cereri în așteptare`;
 
   async function refreshStudentState(userId: string) {
     const [reqRes, accRes, attRes] = await Promise.all([
@@ -151,18 +159,14 @@ export default function DashboardPage() {
       setLoading(true);
 
       let userId: string;
-      let login: string;
       try {
         const current = await getCurrentUser();
         userId = current.userId;
-        login = current.signInDetails?.loginId ?? current.username ?? "";
       } catch {
         router.replace("/login");
         return;
       }
       if (cancelled) return;
-
-      setLoginId(login);
 
       const admin = await checkIsAdmin();
       if (cancelled) return;
@@ -225,7 +229,7 @@ export default function DashboardPage() {
 
     if (res.errors?.length) {
       console.error(res.errors);
-      alert("Failed to request access.");
+      alert("Solicitarea accesului a eșuat.");
       return;
     }
 
@@ -233,7 +237,7 @@ export default function DashboardPage() {
   }
 
   async function deleteRequest(req: ExamRequest) {
-    if (!confirm("Delete this request?")) return;
+    if (!confirm("Ștergi această cerere?")) return;
 
     const owner = req.owner;
     const examId = req.examId;
@@ -242,7 +246,7 @@ export default function DashboardPage() {
     const res = await client.models.ExamRequest.delete({ owner, examId });
     if (res.errors?.length) {
       console.error(res.errors);
-      alert("Failed to delete request.");
+      alert("Ștergerea cererii a eșuat.");
       return;
     }
 
@@ -253,42 +257,26 @@ export default function DashboardPage() {
 
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         {loading ? (
-          <p className="small">Loading dashboard…</p>
+          <p className="small">Se încarcă panoul…</p>
         ) : (
           <div className="panel-stack">
             <div className="panel-top-row">
               <div className="page-title">
-                Welcome, {profile?.firstName} {profile?.lastName}
+                Bine ai venit, {profile?.firstName} {profile?.lastName}
               </div>
 
               <div className="panel-actions">
                 {isAdmin && (
                   <>
                     <OutlineButton onClick={() => router.push("/admin/exams")}>
-                      Admin exams
+                      Simulări administrator
                     </OutlineButton>
                     <OutlineButton onClick={() => router.push("/admin/requests")}>
-                      Requests
+                      Cereri
                     </OutlineButton>
                   </>
                 )}
@@ -296,33 +284,33 @@ export default function DashboardPage() {
             </div>
 
             <Card>
-              <div className="section-title">Your learning pulse</div>
+              <div className="section-title">Ritmul tău de învățare</div>
               <div className="page-subtitle" style={{ marginTop: 6 }}>
-                Quick overview of your current exam activity.
+                O privire rapidă asupra activității tale la simulări.
               </div>
 
               <div className="metric-grid">
                 <div className="metric-tile soft-blue">
-                  <div className="metric-label">Available exams</div>
+                  <div className="metric-label">Simulări disponibile</div>
                   <div className="metric-value">{exams.length}</div>
                   <div className="metric-helper">
-                    {upcomingCount} upcoming
+                    {upcomingLabel}
                   </div>
                 </div>
 
                 <div className="metric-tile soft-lilac">
-                  <div className="metric-label">Completed</div>
+                  <div className="metric-label">Finalizate</div>
                   <div className="metric-value">{completedCount}</div>
                   <div className="metric-helper">
-                    Exams with at least one submission
+                    Simulări cu cel puțin o trimitere
                   </div>
                 </div>
 
                 <div className="metric-tile soft-mint">
-                  <div className="metric-label">Access status</div>
-                  <div className="metric-value">{isAdmin ? "Admin" : access.length}</div>
+                  <div className="metric-label">Stare acces</div>
+                  <div className="metric-value">{isAdmin ? "Administrator" : access.length}</div>
                   <div className="metric-helper">
-                    {isAdmin ? "You can manage all exams" : `${pendingCount} pending request(s)`}
+                    {isAdmin ? "Poți gestiona toate simulările" : pendingLabel}
                   </div>
                 </div>
               </div>
@@ -332,10 +320,10 @@ export default function DashboardPage() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
                   <div className="section-title-lg">
-                    Available mock exams
+                    Simulări disponibile
                   </div>
                   <div className="small" style={{ marginTop: 6 }}>
-                    Choose an exam and start practicing.
+                    Alege o simulare și începe antrenamentul.
                   </div>
                 </div>
               </div>
@@ -343,7 +331,7 @@ export default function DashboardPage() {
               <div className="exam-list">
                 {exams.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
-                    No exams yet. (An Admin must create them.)
+                    Nu există încă simulări. (Un administrator trebuie să le creeze.)
                   </p>
                 ) : (
                   exams.map((e) => {
@@ -363,17 +351,17 @@ export default function DashboardPage() {
                     return (
                       <div key={e.id} className="exam-item">
                         <div className="exam-item-title">{e.title}</div>
-                        <div className="small">Admission type: {e.admissionType}</div>
+                        <div className="small">Tip admitere: {e.admissionType}</div>
 
                         <div className="small" style={{ opacity: 0.85 }}>
-                          Starts: {formatWhen(e.startAt)} • Duration: {e.durationMinutes ?? "—"}{" "}
+                          Începe: {formatWhen(e.startAt)} • Durată: {e.durationMinutes ?? "—"}{" "}
                           min
                         </div>
 
                         <div className="exam-actions">
                           {isAdmin ? (
                             <OutlineButton onClick={() => router.push(`/admin/exams/${e.id}`)}>
-                              Manage exam
+                              Gestionează simularea
                             </OutlineButton>
                           ) : latestAttempt ? (
                             // ✅ submitted: show results, but lock until exam ends
@@ -381,32 +369,32 @@ export default function DashboardPage() {
                               <OutlineButton
                                 onClick={() => router.push(`/exam/review/${latestAttempt.id}`)}
                               >
-                                View results
+                                Vezi rezultatele
                               </OutlineButton>
                             ) : (
                               <GrayButton
-                                label="Review locked"
-                                title="Review unlocks after the exam time window ends."
+                                label="Rezultate blocate"
+                                title="Rezultatele se deblochează după încheierea intervalului de examen."
                               />
                             )
                           ) : hasAccess ? (
                             examState === "during" ? (
                               <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
-                                Start exam
+                                Începe examenul
                               </OutlineButton>
                             ) : examState === "before" ? (
                               <GrayButton
-                                label="Not started"
-                                title={`Starts at ${formatWhen(e.startAt)}`}
+                                label="Neînceput"
+                                title={`Începe la ${formatWhen(e.startAt)}`}
                               />
                             ) : (
-                              <GrayButton label="Exam ended" />
+                              <GrayButton label="Examen încheiat" />
                             )
                           ) : status === "PENDING" ? (
-                            <GrayButton label="Request pending" />
+                            <GrayButton label="Cerere în așteptare" />
                           ) : status === "REJECTED" ? (
                             <>
-                              <GrayButton label="Rejected" />
+                              <GrayButton label="Respins" />
                               <button
                                 onClick={() => deleteRequest(req!)}
                                 style={{
@@ -420,12 +408,12 @@ export default function DashboardPage() {
                                   textDecoration: "underline",
                                 }}
                               >
-                                Delete request
+                                Șterge cererea
                               </button>
                             </>
                           ) : (
                             <OutlineButton onClick={() => requestAccess(e)}>
-                              Request access
+                              Solicită acces
                             </OutlineButton>
                           )}
                         </div>
@@ -433,7 +421,7 @@ export default function DashboardPage() {
                         {/* Optional helper text when locked */}
                         {!isAdmin && latestAttempt && !reviewUnlocked && (
                           <div className="small" style={{ opacity: 0.7 }}>
-                            Review will be available after the exam ends.
+                            Rezultatele vor fi disponibile după încheierea examenului.
                           </div>
                         )}
                       </div>

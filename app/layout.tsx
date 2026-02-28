@@ -5,19 +5,19 @@ import AmplifyClientProvider from "./amplify-client";
 import { Bebas_Neue, Inter } from "next/font/google";
 
 const display = Bebas_Neue({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   weight: "400",
   variable: "--font-display",
 });
 
 const body = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-body",
 });
 
 export const metadata: Metadata = {
   title: "Mock Exams",
-  description: "Mock exams app",
+  description: "Platformă de simulări pentru examene",
 };
 
 export default function RootLayout({
@@ -26,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable}`}>
+    <html lang="ro" className={`${display.variable} ${body.variable}`}>
       <body>
         <AmplifyClientProvider>{children}</AmplifyClientProvider>
       </body>

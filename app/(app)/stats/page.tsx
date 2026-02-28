@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -12,12 +13,23 @@ import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
+type AdmissionPerformance = Schema["AdmissionPerformance"]["type"];
+type PerformancePoint = Schema["PerformancePoint"]["type"];
+
+type PlotPoint = {
+  key: string;
+  label: string;
+  value: number;
+  count: number;
+};
+
+const MIN_COHORT_SAMPLE = 5;
 
 function GrayButton({ label, title }: { label: string; title?: string }) {
   return (
@@ -30,7 +42,6 @@ function GrayButton({ label, title }: { label: string; title?: string }) {
         padding: "10px 12px",
         borderRadius: 12,
 
-        // normal feel (not bold)
         fontWeight: 600,
         fontSize: 14,
 
@@ -52,14 +63,121 @@ function getAttemptSubmittedAtMs(attempt: Pick<ExamAttempt, "submittedAt">) {
   return toTimestamp(attempt.submittedAt);
 }
 
+function formatBucketLabel(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const ms = d.getTime();
+  if (!Number.isFinite(ms)) return "";
+
+  return d.toLocaleDateString("ro-RO", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function formatPercent(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${Math.round(value)}%`;
+}
+
+function TrendLinePlot({
+  points,
+  color,
+  areaClassName,
+  strokeClassName,
+  emptyLabel,
+}: {
+  points: PlotPoint[];
+  color: string;
+  areaClassName: string;
+  strokeClassName: string;
+  emptyLabel: string;
+}) {
+  const width = 560;
+  const height = 220;
+  const padX = 22;
+  const padY = 18;
+
+  if (points.length === 0) {
+    return <div className="plot-empty small">{emptyLabel}</div>;
+  }
+
+  const spanX = width - padX * 2;
+  const spanY = height - padY * 2;
+  const denom = Math.max(1, points.length - 1);
+
+  const coords = points.map((point, index) => {
+    const x = padX + (index / denom) * spanX;
+    const y = padY + ((100 - point.value) / 100) * spanY;
+    return { ...point, x, y };
+  });
+
+  const linePath = coords
+    .map((coord, index) => `${index === 0 ? "M" : "L"}${coord.x.toFixed(2)} ${coord.y.toFixed(2)}`)
+    .join(" ");
+
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  const areaPath = `${linePath} L${last.x.toFixed(2)} ${(height - padY).toFixed(2)} L${first.x.toFixed(2)} ${(height - padY).toFixed(2)} Z`;
+
+  const axisLabels = [
+    coords[0],
+    coords[Math.floor(coords.length / 2)],
+    coords[coords.length - 1],
+  ].filter((coord, idx, arr) => arr.findIndex((x) => x.key === coord.key) === idx);
+
+  return (
+    <div className="plot-wrap">
+      <svg className="plot-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafic evoluție">
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const y = padY + ((100 - tick) / 100) * spanY;
+          return (
+            <g key={tick}>
+              <line x1={padX} y1={y} x2={width - padX} y2={y} className="plot-grid-line" />
+              <text x={6} y={y + 4} className="plot-grid-label">
+                {tick}%
+              </text>
+            </g>
+          );
+        })}
+
+        <path d={areaPath} className={areaClassName} />
+        <path d={linePath} className={strokeClassName} />
+
+        {coords.map((coord) => (
+          <circle
+            key={coord.key}
+            cx={coord.x}
+            cy={coord.y}
+            r={3.5}
+            fill={color}
+            className="plot-point"
+          />
+        ))}
+      </svg>
+
+      <div className="plot-axis-row">
+        {axisLabels.map((label) => (
+          <span key={label.key}>{label.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function StatsPage() {
   const router = useRouter();
 
-  const [loginId, setLoginId] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+
+  const [selectedAdmissionType, setSelectedAdmissionType] = useState("ALL");
+  const [trendRefreshKey, setTrendRefreshKey] = useState(0);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState<string | null>(null);
+  const [trendData, setTrendData] = useState<AdmissionPerformance | null>(null);
 
   // used for "unlock review after exam ends"
   const [nowMs, setNowMs] = useState(Date.now());
@@ -76,22 +194,17 @@ export default function StatsPage() {
 
       // auth gate
       let userId: string;
-      let login: string;
       try {
         const u = await getCurrentUser();
         userId = u.userId;
-        login = u.signInDetails?.loginId ?? u.username ?? "";
       } catch {
         router.replace("/login");
         return;
       }
       if (cancelled) return;
-      setLoginId(login);
 
       const [examsRes, attemptsRes] = await Promise.all([
         client.models.MockExam.list({ limit: 500 }),
-        // load attempts for current user
-        // (If you later have a generated secondary-index query, you can swap to it.)
         client.models.ExamAttempt.list({
           filter: { userId: { eq: userId } },
           limit: 500,
@@ -116,6 +229,71 @@ export default function StatsPage() {
     };
   }, [router]);
 
+  const admissionTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+
+    for (const exam of exams) {
+      const type = String(exam.admissionType ?? "").trim();
+      if (type) set.add(type);
+    }
+
+    for (const attempt of attempts) {
+      const type = String(attempt.admissionType ?? "").trim();
+      if (type) set.add(type);
+    }
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ro"));
+  }, [attempts, exams]);
+
+  useEffect(() => {
+    if (selectedAdmissionType === "ALL") return;
+    if (!admissionTypeOptions.includes(selectedAdmissionType)) {
+      setSelectedAdmissionType("ALL");
+    }
+  }, [admissionTypeOptions, selectedAdmissionType]);
+
+  const selectedAdmissionTypeValue =
+    selectedAdmissionType === "ALL" ? undefined : selectedAdmissionType;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setTrendLoading(true);
+      setTrendError(null);
+
+      const res = await client.queries.getAdmissionPerformance(
+        selectedAdmissionTypeValue
+          ? { admissionType: selectedAdmissionTypeValue }
+          : {}
+      );
+
+      if (cancelled) return;
+
+      if (res.errors?.length) {
+        console.error(res.errors);
+        setTrendError("Nu am putut încărca comparația de performanță.");
+        setTrendData(null);
+        setTrendLoading(false);
+        return;
+      }
+
+      setTrendData(res.data ?? null);
+      setTrendLoading(false);
+    })().catch((e) => {
+      console.error(e);
+      if (!cancelled) {
+        setTrendError("Nu am putut încărca comparația de performanță.");
+        setTrendData(null);
+        setTrendLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAdmissionTypeValue, trendRefreshKey]);
+
   const attemptsByExamId = useMemo(() => {
     const m = new Map<string, ExamAttempt[]>();
 
@@ -127,7 +305,6 @@ export default function StatsPage() {
       m.set(examId, arr);
     }
 
-    // sort each bucket by submittedAt desc
     m.forEach((arr, k) => {
       arr.sort((x: ExamAttempt, y: ExamAttempt) => {
         const ax = getAttemptSubmittedAtMs(x);
@@ -153,6 +330,9 @@ export default function StatsPage() {
   }, [attemptsByExamId]);
 
   const attemptedExamsCount = latestAttempts.length;
+  const availableExamsLabel =
+    exams.length === 1 ? "simulare disponibilă" : "simulări disponibile";
+
   const averagePercent = useMemo(() => {
     if (latestAttempts.length === 0) return 0;
     const total = latestAttempts.reduce((sum, attempt) => {
@@ -176,137 +356,295 @@ export default function StatsPage() {
     return count;
   }, [attemptsByExamId, examsSortedByStartDesc, nowMs]);
 
+  const trendPoints = useMemo(() => {
+    const points = Array.isArray(trendData?.points)
+      ? trendData.points.filter((point): point is PerformancePoint => !!point)
+      : [];
+
+    return points
+      .slice()
+      .sort((a, b) => toTimestamp(a.bucketStart) - toTimestamp(b.bucketStart));
+  }, [trendData?.points]);
+
+  const userSeries = useMemo(() => {
+    return trendPoints
+      .filter((point) => Number.isFinite(Number(point.userAvgPercent)) && Number(point.userCount ?? 0) > 0)
+      .map((point) => ({
+        key: String(point.bucketStart ?? ""),
+        label: formatBucketLabel(point.bucketStart),
+        value: Number(point.userAvgPercent),
+        count: Number(point.userCount ?? 0),
+      }));
+  }, [trendPoints]);
+
+  const cohortSeries = useMemo(() => {
+    return trendPoints
+      .filter(
+        (point) =>
+          Number.isFinite(Number(point.cohortAvgPercent)) &&
+          Number(point.cohortCount ?? 0) >= MIN_COHORT_SAMPLE
+      )
+      .map((point) => ({
+        key: String(point.bucketStart ?? ""),
+        label: formatBucketLabel(point.bucketStart),
+        value: Number(point.cohortAvgPercent),
+        count: Number(point.cohortCount ?? 0),
+      }));
+  }, [trendPoints]);
+
+  const latestUser = useMemo(() => {
+    if (userSeries.length === 0) return null;
+    return userSeries[userSeries.length - 1].value;
+  }, [userSeries]);
+
+  const latestCohort = useMemo(() => {
+    if (cohortSeries.length === 0) return null;
+    return cohortSeries[cohortSeries.length - 1].value;
+  }, [cohortSeries]);
+
+  const latestGap = useMemo(() => {
+    if (latestUser == null || latestCohort == null) return null;
+    return latestUser - latestCohort;
+  }, [latestCohort, latestUser]);
+
+  const hasSmallCohortBuckets = useMemo(() => {
+    return trendPoints.some((point) => {
+      const count = Number(point.cohortCount ?? 0);
+      return count > 0 && count < MIN_COHORT_SAMPLE;
+    });
+  }, [trendPoints]);
+
+  const cohortTotalCount = Number(trendData?.cohortTotalCount ?? 0);
+  const userTotalCount = Number(trendData?.userTotalCount ?? 0);
+  const gapPrefix = latestGap != null && latestGap > 0 ? "+" : "";
+
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         {loading ? (
-          <p className="small">Loading stats…</p>
+          <p className="small">Se încarcă statisticile…</p>
         ) : (
           <div className="panel-stack">
             <div className="panel-top-row">
-              <div className="page-title">My stats</div>
+              <div className="page-title">Statisticile mele</div>
 
               <div className="panel-actions">
                 <OutlineButton onClick={() => router.push("/dashboard")}>
-                  Back to dashboard
+                  Înapoi la panou
                 </OutlineButton>
               </div>
             </div>
 
             <Card>
-              <div className="section-title">Progress snapshot</div>
+              <div className="section-title">Rezumat progres</div>
               <div className="page-subtitle" style={{ marginTop: 6 }}>
-                A quick look at how your latest attempts are going.
+                O privire rapidă asupra celor mai recente încercări.
               </div>
 
               <div className="metric-grid">
                 <div className="metric-tile soft-blue">
-                  <div className="metric-label">Attempted exams</div>
+                  <div className="metric-label">Simulări încercate</div>
                   <div className="metric-value">{attemptedExamsCount}</div>
-                  <div className="metric-helper">From {exams.length} available exam(s)</div>
+                  <div className="metric-helper">Din {exams.length} {availableExamsLabel}</div>
                 </div>
 
                 <div className="metric-tile soft-lilac">
-                  <div className="metric-label">Average score</div>
+                  <div className="metric-label">Scor mediu</div>
                   <div className="metric-value">{averagePercent}%</div>
-                  <div className="metric-helper">Based on latest attempt per exam</div>
+                  <div className="metric-helper">Bazat pe ultima încercare pentru fiecare simulare</div>
                 </div>
 
                 <div className="metric-tile soft-mint">
-                  <div className="metric-label">Locked reviews</div>
+                  <div className="metric-label">Rezultate blocate</div>
                   <div className="metric-value">{reviewLockedCount}</div>
-                  <div className="metric-helper">Unlock automatically after exam end</div>
+                  <div className="metric-helper">Se deblochează automat după încheierea examenului</div>
                 </div>
               </div>
             </Card>
 
             <Card>
-              <div className="section-title">Results per exam</div>
+              <div className="stats-compare-head">
+                <div>
+                  <div className="section-title">Evoluție comparativă</div>
+                  <div className="page-subtitle" style={{ marginTop: 6 }}>
+                    Compară evoluția ta cu media altor elevi pe același tip de admitere.
+                  </div>
+                </div>
+
+                <div className="stats-filter-box">
+                  <label htmlFor="admission-filter" className="small">
+                    Tip admitere
+                  </label>
+                  <select
+                    id="admission-filter"
+                    className="stats-select"
+                    value={selectedAdmissionType}
+                    onChange={(e) => setSelectedAdmissionType(e.target.value)}
+                  >
+                    <option value="ALL">Toate tipurile</option>
+                    {admissionTypeOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {trendLoading ? (
+                <p className="small" style={{ marginTop: 14, marginBottom: 0 }}>
+                  Se încarcă graficele…
+                </p>
+              ) : trendError ? (
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  <p className="small" style={{ margin: 0 }}>
+                    {trendError}
+                  </p>
+                  <div>
+                    <OutlineButton onClick={() => setTrendRefreshKey((x) => x + 1)}>
+                      Reîncarcă comparația
+                    </OutlineButton>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="stats-plots-grid">
+                    <div className="stats-plot-panel">
+                      <div className="stats-plot-head">
+                        <div className="section-title">Evoluția ta</div>
+                        <div className="small">Scor mediu săptămânal (%)</div>
+                      </div>
+
+                      <TrendLinePlot
+                        points={userSeries}
+                        color="#2f67ff"
+                        areaClassName="plot-area-user"
+                        strokeClassName="plot-line-user"
+                        emptyLabel="Nu există suficiente încercări pentru a afișa evoluția ta."
+                      />
+                    </div>
+
+                    <div className="stats-plot-panel">
+                      <div className="stats-plot-head">
+                        <div className="section-title">Media cohortei</div>
+                        <div className="small">
+                          Elevi diferiți de tine, filtrați după tipul selectat
+                        </div>
+                      </div>
+
+                      <TrendLinePlot
+                        points={cohortSeries}
+                        color="#20a47d"
+                        areaClassName="plot-area-cohort"
+                        strokeClassName="plot-line-cohort"
+                        emptyLabel={`Nu există suficiente date de cohortă (minim ${MIN_COHORT_SAMPLE} încercări pe interval).`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="stats-compare-kpis">
+                    <div className="stats-kpi-pill">
+                      <span>Ultimul tău punct</span>
+                      <strong>{formatPercent(latestUser)}</strong>
+                    </div>
+
+                    <div className="stats-kpi-pill">
+                      <span>Ultima medie cohortă</span>
+                      <strong>{formatPercent(latestCohort)}</strong>
+                    </div>
+
+                    <div className="stats-kpi-pill">
+                      <span>Diferență față de cohortă</span>
+                      <strong>
+                        {latestGap == null
+                          ? "—"
+                          : `${gapPrefix}${Math.round(latestGap)} pp`}
+                      </strong>
+                    </div>
+
+                    <div className="stats-kpi-pill">
+                      <span>Eșantion</span>
+                      <strong>
+                        Tu: {userTotalCount} • Cohortă: {cohortTotalCount}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {hasSmallCohortBuckets && (
+                    <div className="small" style={{ marginTop: 10 }}>
+                      Unele intervale au fost ascunse din graficul cohortei deoarece au mai puțin de {MIN_COHORT_SAMPLE} încercări.
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+
+            <Card>
+              <div className="section-title">Rezultate pe simulare</div>
 
               <div className="small" style={{ marginTop: 6, opacity: 0.8 }}>
-                Results appear after you submit. Reviews unlock after the exam time window ends.
+                Rezultatele apar după trimitere. Deblocarea are loc după încheierea intervalului de examen.
               </div>
 
               <div className="exam-list">
                 {exams.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
-                    No exams available.
+                    Nu există simulări disponibile.
                   </p>
                 ) : (
                   examsSortedByStartDesc.map((e) => {
-                      const examAttempts = attemptsByExamId.get(e.id) ?? [];
-                      const latest = examAttempts[0] ?? null;
+                    const examAttempts = attemptsByExamId.get(e.id) ?? [];
+                    const latest = examAttempts[0] ?? null;
 
-                      const { endMs } = getExamWindow(e);
-                      const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
+                    const { endMs } = getExamWindow(e);
+                    const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
 
-                      return (
-                        <div key={e.id} className="exam-item">
-                          <div className="exam-item-title">{e.title}</div>
-                          <div className="small">Admission type: {e.admissionType}</div>
+                    return (
+                      <div key={e.id} className="exam-item">
+                        <div className="exam-item-title">{e.title}</div>
+                        <div className="small">Tip admitere: {e.admissionType}</div>
 
+                        <div className="small" style={{ opacity: 0.85 }}>
+                          Începe: {formatWhen(e.startAt)} • Durată: {e.durationMinutes ?? "—"} min
+                        </div>
+
+                        {latest ? (
                           <div className="small" style={{ opacity: 0.85 }}>
-                            Starts: {formatWhen(e.startAt)} • Duration: {e.durationMinutes ?? "—"} min
+                            Trimis: {formatWhen(latest.submittedAt)} • Scor: {latest.score} /{" "}
+                            {latest.maxScore}
                           </div>
+                        ) : (
+                          <div className="small" style={{ opacity: 0.85 }}>
+                            Fără încercări încă.
+                          </div>
+                        )}
 
-                          {latest ? (
-                            <div className="small" style={{ opacity: 0.85 }}>
-                              Submission: {formatWhen(latest.submittedAt)} • Score: {latest.score} /{" "}
-                              {latest.maxScore}
-                            </div>
-                          ) : (
-                            <div className="small" style={{ opacity: 0.85 }}>
-                              No attempts yet.
-                            </div>
-                          )}
-
-                          <div className="exam-actions">
-                            {/* <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
-                              Go to exam
-                            </OutlineButton> */}
-
-                            {latest && (
-                              reviewUnlocked ? (
+                        <div className="exam-actions">
+                          {latest &&
+                            (reviewUnlocked ? (
                               <OutlineButton
                                 onClick={() => router.push(`/exam/review/${latest.id}`)}
                               >
-                                View results
+                                Vezi rezultatele
                               </OutlineButton>
                             ) : (
                               <GrayButton
-                                label="Review locked"
-                                title="Review unlocks after the exam time window ends."
+                                label="Rezultate blocate"
+                                title="Rezultatele se deblochează după încheierea intervalului de examen."
                               />
-                            )
-                            )}
-                          </div>
-
-                          {!reviewUnlocked && latest && (
-                            <div className="small" style={{ opacity: 0.7 }}>
-                              Review will be available after the exam ends.
-                            </div>
-                          )}
+                            ))}
                         </div>
-                      );
-                    })
+
+                        {!reviewUnlocked && latest && (
+                          <div className="small" style={{ opacity: 0.7 }}>
+                            Rezultatele vor fi disponibile după încheierea examenului.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </Card>

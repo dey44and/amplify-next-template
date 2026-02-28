@@ -18,19 +18,19 @@ export function PageShell({
 
   const railLinks = isAdminArea
     ? [
-        { href: "/dashboard", icon: "D", label: "Dashboard" },
-        { href: "/admin/exams", icon: "E", label: "Admin exams" },
-        { href: "/admin/requests", icon: "R", label: "Requests" },
+        { href: "/dashboard", icon: "D", label: "Panou" },
+        { href: "/admin/exams", icon: "E", label: "Simulări administrator" },
+        { href: "/admin/requests", icon: "R", label: "Cereri" },
       ]
     : [
-        { href: "/dashboard", icon: "D", label: "Dashboard" },
-        { href: "/profile", icon: "P", label: "Profile" },
-        { href: "/stats", icon: "S", label: "Stats" },
+        { href: "/dashboard", icon: "D", label: "Panou" },
+        { href: "/profile", icon: "P", label: "Profil" },
+        { href: "/stats", icon: "S", label: "Statistici" },
       ];
 
   return (
     <div className="app-shell-layout">
-      <aside className="app-rail" aria-label="Section navigation">
+      <aside className="app-rail" aria-label="Navigare între secțiuni">
         {railLinks.map((link) => {
           const isActive = pathname?.startsWith(link.href);
 

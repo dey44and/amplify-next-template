@@ -21,6 +21,6 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     });
   }, [router]);
 
-  if (ok === null) return <p style={{ padding: 24 }}>Checking admin access…</p>;
+  if (ok === null) return <p style={{ padding: 24 }}>Se verifică accesul de administrator…</p>;
   return <>{children}</>;
 }

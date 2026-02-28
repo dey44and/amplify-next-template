@@ -265,6 +265,146 @@ button:focus-visible {
   color: var(--muted);
 }
 
+.stats-compare-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.stats-filter-box {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.stats-select {
+  width: 100%;
+  appearance: none;
+  border: 1px solid #c8d5e7;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--fg);
+  background: linear-gradient(180deg, #ffffff, #f4f8ff);
+}
+
+.stats-plots-grid {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stats-plot-panel {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.stats-plot-head {
+  display: grid;
+  gap: 4px;
+}
+
+.plot-wrap {
+  border: 1px solid #d6e0ef;
+  border-radius: 14px;
+  background:
+    radial-gradient(600px 280px at 0% 0%, rgba(47, 103, 255, 0.06), transparent 65%),
+    #f8fbff;
+  padding: 8px 8px 10px;
+}
+
+.plot-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.plot-grid-line {
+  stroke: #dfe8f4;
+  stroke-width: 1;
+}
+
+.plot-grid-label {
+  fill: #8a99b1;
+  font-size: 9.5px;
+}
+
+.plot-area-user {
+  fill: rgba(47, 103, 255, 0.17);
+}
+
+.plot-line-user {
+  fill: none;
+  stroke: #2f67ff;
+  stroke-width: 2.2;
+}
+
+.plot-area-cohort {
+  fill: rgba(32, 164, 125, 0.16);
+}
+
+.plot-line-cohort {
+  fill: none;
+  stroke: #20a47d;
+  stroke-width: 2.2;
+}
+
+.plot-point {
+  opacity: 0.95;
+}
+
+.plot-axis-row {
+  margin-top: 2px;
+  padding: 0 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #7b8aa2;
+}
+
+.plot-empty {
+  border: 1px dashed #cfdcee;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 18px 12px;
+}
+
+.stats-compare-kpis {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.stats-kpi-pill {
+  border: 1px solid #d4e0ef;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: #ffffff;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stats-kpi-pill span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stats-kpi-pill strong {
+  font-size: 14px;
+  color: var(--fg);
+}
+
 .dashboard-content-grid {
   display: grid;
   gap: 14px;
@@ -419,6 +559,38 @@ button:focus-visible {
   gap: 10px;
 }
 
+.header-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-avatar-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #c8d3e3;
+  background: #ffffff;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 6px 16px rgba(17, 35, 63, 0.1);
+}
+
+.header-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.header-avatar-fallback {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3b4b67;
+}
+
 .hdrMenuBtn {
   display: none;
   border: 1px solid var(--border);
@@ -465,6 +637,50 @@ button:focus-visible {
 .hdrMobileRight {
   border-top: 1px solid var(--border);
   padding-top: 12px;
+}
+
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.profile-avatar-preview {
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+  border: 1px solid #c7d4e7;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(17, 35, 63, 0.1);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.profile-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
 
 [data-amplify-authenticator] {
@@ -555,6 +771,10 @@ button:focus-visible {
 
   .loginLeftInner {
     width: 100% !important;
+  }
+
+  .stats-plots-grid {
+    grid-template-columns: 1fr;
   }
 }
 

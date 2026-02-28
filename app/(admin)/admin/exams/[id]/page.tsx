@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -11,7 +12,7 @@ import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -48,8 +49,6 @@ export default function AdminExamDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const examId = useMemo(() => params.id, [params.id]);
-
-  const [loginId, setLoginId] = useState("");
 
   const [exam, setExam] = useState<Exam | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -131,7 +130,6 @@ export default function AdminExamDetailPage() {
         router.replace("/login");
         return;
       }
-      setLoginId(user.signInDetails?.loginId ?? user.username ?? "");
 
       // admin gate
       const ok = await isAdmin();
@@ -157,11 +155,11 @@ export default function AdminExamDetailPage() {
     const durationMinutes = Number(exam.durationMinutes);
 
     if (!title || !admissionType || !startAt) {
-      alert("Title, admission type, and start time are required.");
+      alert("Titlul, tipul de admitere și ora de start sunt obligatorii.");
       return;
     }
     if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
-      alert("Duration must be a positive integer.");
+      alert("Durata trebuie să fie un număr întreg pozitiv.");
       return;
     }
 
@@ -177,7 +175,7 @@ export default function AdminExamDetailPage() {
 
       if (res.errors?.length) {
         console.error(res.errors);
-        alert("Failed to save exam.");
+        alert("Salvarea simulării a eșuat.");
       } else {
         await refresh();
       }
@@ -193,7 +191,7 @@ export default function AdminExamDetailPage() {
     const correctAnswer = newTask.correctAnswer.trim();
 
     if (!orderStr || !markStr || !question || !correctAnswer) {
-      alert("Please fill order, mark, question, and correct answer.");
+      alert("Completează ordinea, punctajul, întrebarea și răspunsul corect.");
       return;
     }
 
@@ -201,11 +199,11 @@ export default function AdminExamDetailPage() {
     const mark = Number(markStr);
 
     if (!Number.isInteger(order) || order < 1) {
-      alert("Order must be an integer >= 1.");
+      alert("Ordinea trebuie să fie un număr întreg >= 1.");
       return;
     }
     if (!Number.isFinite(mark) || mark <= 0) {
-      alert("Mark must be a positive number.");
+      alert("Punctajul trebuie să fie un număr pozitiv.");
       return;
     }
 
@@ -221,7 +219,7 @@ export default function AdminExamDetailPage() {
 
       if (taskRes.errors?.length || !taskRes.data) {
         console.error(taskRes.errors);
-        alert("Failed to add task.");
+        alert("Adăugarea itemului a eșuat.");
         return;
       }
 
@@ -239,7 +237,7 @@ export default function AdminExamDetailPage() {
         // rollback task if key failed
         await client.models.Task.delete({ id: taskId });
         alert(
-          "Failed to save correct answer (TaskKey). The question was rolled back, so you can try again."
+          "Salvarea răspunsului corect (TaskKey) a eșuat. Întrebarea a fost anulată, ca să poți încerca din nou."
         );
         return;
       }
@@ -252,7 +250,7 @@ export default function AdminExamDetailPage() {
   }
 
   async function deleteTask(taskId: string) {
-    if (!confirm("Delete this task?")) return;
+    if (!confirm("Ștergi acest item?")) return;
 
     // delete key (if exists) then task
     const k = keysByTaskId.get(taskId);
@@ -274,7 +272,7 @@ export default function AdminExamDetailPage() {
     const res = await client.models.Task.delete({ id: taskId });
     if (res.errors?.length) {
       console.error(res.errors);
-      alert("Failed to delete task.");
+      alert("Ștergerea itemului a eșuat.");
       return;
     }
 
@@ -288,62 +286,46 @@ export default function AdminExamDetailPage() {
 
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         {loading ? (
-          <p className="small">Loading…</p>
+          <p className="small">Se încarcă…</p>
         ) : !exam ? (
-          <p className="small">Exam not found.</p>
+          <p className="small">Simularea nu a fost găsită.</p>
         ) : (
           <div className="panel-stack">
             {/* Top row */}
             <div className="panel-top-row">
-              <div className="page-title">Admin • Manage exam</div>
+              <div className="page-title">Administrator • Gestionare simulare</div>
               <div className="small" style={{ opacity: 0.75 }}>
                 ID: {examId}
               </div>
 
               <div className="panel-actions">
-                <OutlineButton onClick={() => router.push("/admin/exams")}>Back</OutlineButton>
+                <OutlineButton onClick={() => router.push("/admin/exams")}>Înapoi</OutlineButton>
                 <OutlineButton onClick={saveExam} disabled={savingExam}>
-                  {savingExam ? "Saving…" : "Save"}
+                  {savingExam ? "Se salvează…" : "Salvează"}
                 </OutlineButton>
               </div>
             </div>
 
             {/* Exam details */}
             <Card>
-              <div className="section-title">Exam details</div>
+              <div className="section-title">Detalii simulare</div>
 
               <div style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 720 }}>
                 <input
                   value={exam.title ?? ""}
                   onChange={(e) => setExam({ ...exam, title: e.target.value })}
-                  placeholder="Title"
+                  placeholder="Titlu"
                   style={inputStyle}
                 />
 
                 <input
                   value={exam.admissionType ?? ""}
                   onChange={(e) => setExam({ ...exam, admissionType: e.target.value })}
-                  placeholder="Admission type"
+                  placeholder="Tip admitere"
                   style={inputStyle}
                 />
 
@@ -368,13 +350,13 @@ export default function AdminExamDetailPage() {
                         durationMinutes: e.target.value === "" ? null : Number(e.target.value),
                       })
                     }
-                    placeholder="Duration (min)"
+                    placeholder="Durată (min)"
                     style={inputStyle}
                   />
                 </div>
 
                 <div className="small" style={{ opacity: 0.75 }}>
-                  Tip: Start time uses your local timezone when editing.
+                  Sfat: ora de start folosește fusul tău orar local la editare.
                 </div>
               </div>
             </Card>
@@ -383,9 +365,9 @@ export default function AdminExamDetailPage() {
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
-                  <div className="section-title">Tasks (questions)</div>
+                  <div className="section-title">Itemi (întrebări)</div>
                   <div className="small" style={{ marginTop: 6 }}>
-                    Add questions with an order, mark, and correct answer (admin-only).
+                    Adaugă întrebări cu ordine, punctaj și răspuns corect (doar admin).
                   </div>
                 </div>
               </div>
@@ -400,21 +382,21 @@ export default function AdminExamDetailPage() {
                   }}
                 >
                   <input
-                    placeholder="Order (1, 2, 3...)"
+                    placeholder="Ordine (1, 2, 3...)"
                     value={newTask.order}
                     onChange={(e) => setNewTask({ ...newTask, order: e.target.value })}
                     disabled={addingTask}
                     style={inputStyle}
                   />
                   <input
-                    placeholder="Mark (e.g. 1, 2.5)"
+                    placeholder="Punctaj (ex.: 1, 2.5)"
                     value={newTask.mark}
                     onChange={(e) => setNewTask({ ...newTask, mark: e.target.value })}
                     disabled={addingTask}
                     style={inputStyle}
                   />
                   <input
-                    placeholder="Correct answer"
+                    placeholder="Răspuns corect"
                     value={newTask.correctAnswer}
                     onChange={(e) => setNewTask({ ...newTask, correctAnswer: e.target.value })}
                     disabled={addingTask}
@@ -423,7 +405,7 @@ export default function AdminExamDetailPage() {
                 </div>
 
                 <textarea
-                  placeholder="Question text"
+                  placeholder="Text întrebare"
                   value={newTask.question}
                   onChange={(e) => setNewTask({ ...newTask, question: e.target.value })}
                   disabled={addingTask}
@@ -432,7 +414,7 @@ export default function AdminExamDetailPage() {
 
                 <div style={{ display: "flex", gap: 10 }}>
                   <OutlineButton onClick={addTask} disabled={addingTask}>
-                    {addingTask ? "Adding…" : "Add task"}
+                    {addingTask ? "Se adaugă…" : "Adaugă item"}
                   </OutlineButton>
                 </div>
               </div>
@@ -441,7 +423,7 @@ export default function AdminExamDetailPage() {
               <div style={{ marginTop: 16 }}>
                 {tasks.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
-                    No tasks yet.
+                    Nu există itemi încă.
                   </p>
                 ) : (
                   <div style={{ display: "grid", gap: 12 }}>
@@ -460,7 +442,7 @@ export default function AdminExamDetailPage() {
                           }}
                         >
                           <div style={{ fontWeight: 760 }}>
-                            #{t.order} • {t.mark} points
+                            #{t.order} • {t.mark} puncte
                           </div>
 
                           <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
@@ -468,12 +450,12 @@ export default function AdminExamDetailPage() {
                           </div>
 
                           <div className="small" style={{ opacity: 0.85 }}>
-                            <span style={{ fontWeight: 700 }}>Correct answer:</span>{" "}
+                            <span style={{ fontWeight: 700 }}>Răspuns corect:</span>{" "}
                             {correctAnswer ? (
                               <span>{correctAnswer}</span>
                             ) : (
                               <span style={{ opacity: 0.7 }}>
-                                (missing TaskKey — not saved or not readable)
+                                (lipsește TaskKey — nu a fost salvat sau nu poate fi citit)
                               </span>
                             )}
                           </div>
@@ -492,7 +474,7 @@ export default function AdminExamDetailPage() {
                                 textDecoration: "underline",
                               }}
                             >
-                              Delete task
+                              Șterge item
                             </button>
                           </div>
                         </div>

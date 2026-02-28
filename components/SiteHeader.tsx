@@ -10,9 +10,9 @@ export function SiteHeader({ rightSlot }: { rightSlot?: React.ReactNode }) {
 
   const links = useMemo(
     () => [
-      { label: "Dashboard", href: "/dashboard" },
-      { label: "Profile", href: "/profile" },
-      { label: "Stats", href: "/stats" },
+      { label: "Panou", href: "/dashboard" },
+      { label: "Profil", href: "/profile" },
+      { label: "Statistici", href: "/stats" },
     ],
     []
   );
@@ -59,7 +59,7 @@ export function SiteHeader({ rightSlot }: { rightSlot?: React.ReactNode }) {
             type="button"
             className="hdrMenuBtn"
             onClick={() => setOpen((v) => !v)}
-            aria-label="Toggle menu"
+            aria-label="Comută meniul"
             aria-expanded={open}
           >
             ☰

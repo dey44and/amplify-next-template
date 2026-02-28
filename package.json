@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:backup": "node --import tsx scripts/db/synthetic-data.ts backup",
+    "db:seed": "node --import tsx scripts/db/synthetic-data.ts seed",
+    "db:restore": "node --import tsx scripts/db/synthetic-data.ts restore",
+    "db:demo": "node --import tsx scripts/db/synthetic-data.ts demo"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.2",

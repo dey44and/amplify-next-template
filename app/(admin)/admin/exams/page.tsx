@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -11,7 +12,7 @@ import { isAdmin } from "@/lib/isAdmin";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 type Exam = Schema["MockExam"]["type"];
@@ -19,7 +20,6 @@ type Exam = Schema["MockExam"]["type"];
 export default function AdminExamsPage() {
   const router = useRouter();
 
-  const [loginId, setLoginId] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [exams, setExams] = useState<Exam[]>([]);
@@ -64,7 +64,6 @@ export default function AdminExamsPage() {
         router.replace("/login");
         return;
       }
-      setLoginId(user.signInDetails?.loginId ?? user.username ?? "");
 
       // Admin gate -> /dashboard
       const ok = await isAdmin();
@@ -88,13 +87,13 @@ export default function AdminExamsPage() {
     const durStr = form.durationMinutes.trim();
 
     if (!title || !admissionType || !startAtLocal || !durStr) {
-      alert("Please fill title, admission type, start time, and duration.");
+      alert("Completează titlul, tipul de admitere, ora de start și durata.");
       return;
     }
 
     const durationMinutes = Number(durStr);
     if (!Number.isInteger(durationMinutes) || durationMinutes <= 0) {
-      alert("Duration must be a positive integer (minutes).");
+      alert("Durata trebuie să fie un număr întreg pozitiv (minute).");
       return;
     }
 
@@ -112,7 +111,7 @@ export default function AdminExamsPage() {
 
       if (res.errors?.length) {
         console.error(res.errors);
-        alert("Failed to create exam (check console).");
+        alert("Crearea simulării a eșuat (verifică consola).");
         return;
       }
 
@@ -124,12 +123,12 @@ export default function AdminExamsPage() {
   }
 
   async function deleteExam(id: string) {
-    if (!confirm("Delete this exam?")) return;
+    if (!confirm("Ștergi această simulare?")) return;
 
     const res = await client.models.MockExam.delete({ id });
     if (res.errors?.length) {
       console.error(res.errors);
-      alert("Failed to delete exam.");
+      alert("Ștergerea simulării a eșuat.");
       return;
     }
     setExams((prev) => prev.filter((e) => e.id !== id));
@@ -137,41 +136,25 @@ export default function AdminExamsPage() {
 
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         <div className="panel-stack">
           <div className="panel-top-row">
-            <div className="page-title">Admin • Exams</div>
+            <div className="page-title">Administrator • Simulări</div>
 
             <div className="small" style={{ marginLeft: 8 }}>
-              Create and manage mock exams.
+              Creează și gestionează simulări.
             </div>
           </div>
 
           {/* Create */}
           <Card>
-            <div className="section-title">Create exam</div>
+            <div className="section-title">Creează simulare</div>
 
             <div style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 720 }}>
               <input
-                placeholder="Title"
+                placeholder="Titlu"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 disabled={creating}
@@ -179,7 +162,7 @@ export default function AdminExamsPage() {
               />
 
               <input
-                placeholder="Admission type (e.g. Computer Engineering)"
+                placeholder="Tip admitere (ex.: Inginerie Calculatoare)"
                 value={form.admissionType}
                 onChange={(e) => setForm({ ...form, admissionType: e.target.value })}
                 disabled={creating}
@@ -197,7 +180,7 @@ export default function AdminExamsPage() {
 
                 {/* <input
                   inputMode="numeric"
-                  placeholder="Duration (min)"
+                  placeholder="Durată (min)"
                   value={form.durationMinutes}
                   onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
                   disabled={creating}
@@ -207,7 +190,7 @@ export default function AdminExamsPage() {
                   type="number"
                   min={1}
                   step={1}
-                  placeholder="Duration (min)"
+                  placeholder="Durată (min)"
                   value={form.durationMinutes}
                   onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
                   style={inputStyle}
@@ -216,7 +199,7 @@ export default function AdminExamsPage() {
 
               <div style={{ display: "flex", gap: 10 }}>
                 <OutlineButton onClick={createExam} disabled={creating}>
-                  {creating ? "Creating…" : "Create"}
+                  {creating ? "Se creează…" : "Creează"}
                 </OutlineButton>
               </div>
             </div>
@@ -226,24 +209,24 @@ export default function AdminExamsPage() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <div>
-                <div className="section-title">Existing exams</div>
+                <div className="section-title">Simulări existente</div>
                 <div className="small" style={{ marginTop: 6 }}>
-                  Click an exam to manage tasks (questions).
+                  Apasă pe o simulare ca să gestionezi itemii (întrebările).
                 </div>
               </div>
               <OutlineButton onClick={() => refresh()} disabled={loading}>
-                Refresh
+                Reîncarcă
               </OutlineButton>
             </div>
 
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {loading ? (
                 <p className="small" style={{ margin: 0 }}>
-                  Loading…
+                  Se încarcă…
                 </p>
               ) : exams.length === 0 ? (
                 <p className="small" style={{ margin: 0 }}>
-                  No exams yet.
+                  Nu există simulări încă.
                 </p>
               ) : (
                 exams.map((e) => (
@@ -258,15 +241,15 @@ export default function AdminExamsPage() {
                   >
                     <div style={{ fontWeight: 760, letterSpacing: -0.2 }}>{e.title}</div>
 
-                    <div className="small">Admission type: {e.admissionType}</div>
+                    <div className="small">Tip admitere: {e.admissionType}</div>
 
                     <div className="small" style={{ opacity: 0.85 }}>
-                      Starts: {formatWhen(e.startAt)} • Duration: {e.durationMinutes ?? "—"} min
+                      Începe: {formatWhen(e.startAt)} • Durată: {e.durationMinutes ?? "—"} min
                     </div>
 
                     <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
                       <OutlineButton onClick={() => router.push(`/admin/exams/${e.id}`)}>
-                        Manage tasks
+                        Gestionează itemii
                       </OutlineButton>
 
                       <button
@@ -282,7 +265,7 @@ export default function AdminExamsPage() {
                           textDecoration: "underline",
                         }}
                       >
-                        Delete
+                        Șterge
                       </button>
                     </div>
                   </div>

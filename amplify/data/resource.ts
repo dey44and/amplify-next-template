@@ -21,9 +21,15 @@ export const getExamReviewFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const getAdmissionPerformanceFn = defineFunction({
+  entry: "./exam-ops/getAdmissionPerformance.ts",
+  resourceGroupName: "data",
+});
+
 const schema = a.schema({
   UserProfile: a
     .model({
+      avatarUrl: a.string(),
       firstName: a.string(),
       lastName: a.string(),
       county: a.string(),
@@ -92,6 +98,7 @@ const schema = a.schema({
     .authorization((allow) => [
       allow.ownerDefinedIn("userId").identityClaim("sub").to(["create", "read"]),
       allow.group("Admin").to(["read"]),
+      (allow as any).resource(getAdmissionPerformanceFn).to(["read"]),
       // (allow as any).resource(submitExamAttemptFn).to(["create", "read"]),
       // (allow as any).resource(getExamReviewFn).to(["read"]),
     ]),
@@ -160,6 +167,21 @@ const schema = a.schema({
       items: a.ref("ReviewItem").array(),
     }),
 
+    PerformancePoint: a.customType({
+      bucketStart: a.datetime(),
+      userAvgPercent: a.float(),
+      userCount: a.integer(),
+      cohortAvgPercent: a.float(),
+      cohortCount: a.integer(),
+    }),
+
+    AdmissionPerformance: a.customType({
+      admissionType: a.string(),
+      userTotalCount: a.integer(),
+      cohortTotalCount: a.integer(),
+      points: a.ref("PerformancePoint").array(),
+    }),
+
     // Custom query: students call this, function checks ExamAccess
     listTasksForExam: a
     .query()
@@ -198,12 +220,22 @@ const schema = a.schema({
       .returns(a.ref("ExamReview"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(getExamReviewFn)),
+
+      getAdmissionPerformance: a
+      .query()
+      .arguments({
+        admissionType: a.string(),
+      })
+      .returns(a.ref("AdmissionPerformance"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(getAdmissionPerformanceFn)),
 })
 .authorization((allow) => [
   allow.resource(listTasksForExamFn).to(["query"]),
   allow.resource(decideExamRequestFn).to(["query", "mutate"]),
   allow.resource(submitExamAttemptFn).to(["query", "mutate"]),
   allow.resource(getExamReviewFn).to(["query"]),
+  allow.resource(getAdmissionPerformanceFn).to(["query"]),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

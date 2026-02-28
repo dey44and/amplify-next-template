@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -12,7 +13,7 @@ import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -33,8 +34,6 @@ export default function ExamTakePage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const examId = useMemo(() => params.id, [params.id]);
-
-  const [loginId, setLoginId] = useState("");
 
   const [exam, setExam] = useState<Exam | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -156,11 +155,11 @@ export default function ExamTakePage() {
 
     if (res.errors?.length) {
       console.error(res.errors);
-      alert("Failed to request access.");
+      alert("Solicitarea accesului a eșuat.");
       return;
     }
 
-    alert("Request sent. Please wait for approval.");
+    alert("Cererea a fost trimisă. Așteaptă aprobarea.");
   }
 
   async function submitAttempt(auto = false) {
@@ -181,7 +180,7 @@ export default function ExamTakePage() {
 
       if (res.errors?.length || !res.data) {
         console.error(res.errors);
-        const msg = res.errors?.[0]?.message ?? "Failed to submit.";
+        const msg = res.errors?.[0]?.message ?? "Trimiterea a eșuat.";
 
         // if server says already submitted, redirect user to stats (or you can refetch latest attempt)
         if (msg.includes("ALREADY_SUBMITTED")) {
@@ -217,7 +216,6 @@ export default function ExamTakePage() {
         router.replace("/login");
         return;
       }
-      setLoginId(user.signInDetails?.loginId ?? user.username ?? "");
 
       await loadExamOnly();
       await checkAlreadySubmitted();
@@ -276,40 +274,24 @@ export default function ExamTakePage() {
 
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         {showLoading ? (
-          <p className="small">Loading…</p>
+          <p className="small">Se încarcă…</p>
         ) : !exam ? (
-          <p className="small">Exam not found.</p>
+          <p className="small">Examenul nu a fost găsit.</p>
         ) : (
           <div className="panel-stack">
             <div className="panel-top-row">
               <div className="page-title">{exam.title}</div>
 
               <div className="small" style={{ opacity: 0.8 }}>
-                Starts: {formatWhen(exam.startAt)} • Duration: {exam.durationMinutes} min
+                Începe: {formatWhen(exam.startAt)} • Durată: {exam.durationMinutes} min
               </div>
 
               <div className="panel-actions">
-                <OutlineButton onClick={() => router.push("/dashboard")}>Back</OutlineButton>
+                <OutlineButton onClick={() => router.push("/dashboard")}>Înapoi</OutlineButton>
               </div>
             </div>
 
@@ -324,22 +306,22 @@ export default function ExamTakePage() {
                 }}
               >
                 <div>
-                  <div className="section-title">Exam status</div>
+                  <div className="section-title">Stare examen</div>
                   <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
                     {isBefore
-                      ? "Not started yet."
+                      ? "Nu a început încă."
                       : isDuring
-                      ? "In progress."
+                      ? "În desfășurare."
                       : isAfter
-                      ? "Ended."
-                      : "Schedule unavailable."}
+                      ? "Încheiat."
+                      : "Program indisponibil."}
                   </div>
                 </div>
 
                 {Number.isFinite(remainingMs) && isDuring && (
                   <div style={{ textAlign: "right" }}>
                     <div className="small" style={{ opacity: 0.75 }}>
-                      Time remaining
+                      Timp rămas
                     </div>
                     <div style={{ fontSize: 22, fontWeight: 760 }}>
                       {msToClock(remainingMs)}
@@ -350,13 +332,13 @@ export default function ExamTakePage() {
 
               {isBefore && Number.isFinite(startMs) && (
                 <div className="small" style={{ marginTop: 10, opacity: 0.85 }}>
-                  You can start when the timer reaches 0.
+                  Poți începe când cronometrul ajunge la 0.
                 </div>
               )}
 
               {isAfter && (
                 <div className="small" style={{ marginTop: 10, opacity: 0.85 }}>
-                  If you submitted, you can review your results from the review page link shown after submission.
+                  Dacă ai trimis, poți vedea rezultatele din linkul de evaluare afișat după trimitere.
                 </div>
               )}
             </Card>
@@ -365,42 +347,42 @@ export default function ExamTakePage() {
             <Card>
               {!isDuring ? (
                 <div style={{ display: "grid", gap: 10 }}>
-                  <div className="section-title">Questions</div>
+                  <div className="section-title">Întrebări</div>
 
                   {isBefore ? (
                     <p className="small" style={{ margin: 0 }}>
-                      The exam has not started yet.
+                      Examenul nu a început încă.
                     </p>
                   ) : isAfter ? (
                     <p className="small" style={{ margin: 0 }}>
-                      The exam window has ended.
+                      Intervalul examenului s-a încheiat.
                     </p>
                   ) : (
                     <p className="small" style={{ margin: 0 }}>
-                      Unable to determine schedule.
+                      Programul nu poate fi determinat.
                     </p>
                   )}
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <OutlineButton onClick={() => router.push("/dashboard")}>
-                      Back to dashboard
+                      Înapoi la panou
                     </OutlineButton>
                   </div>
                 </div>
               ) : loadingTasks ? (
                 <p className="small" style={{ margin: 0 }}>
-                  Loading questions…
+                  Se încarcă întrebările…
                 </p>
               ) : tasks.length === 0 ? (
                 <div style={{ display: "grid", gap: 10 }}>
-                  <div className="section-title">No access or no questions</div>
+                  <div className="section-title">Fără acces sau fără întrebări</div>
                   <p className="small" style={{ margin: 0, opacity: 0.85 }}>
-                    If you requested access, wait for approval. If you have access and still see
-                    this, verify the exam has questions.
+                    Dacă ai cerut acces, așteaptă aprobarea. Dacă ai acces și tot vezi acest mesaj,
+                    verifică dacă examenul are întrebări.
                   </p>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <OutlineButton onClick={requestAccess}>Request access</OutlineButton>
-                    <OutlineButton onClick={loadTasksSecure}>Retry</OutlineButton>
+                    <OutlineButton onClick={requestAccess}>Solicită acces</OutlineButton>
+                    <OutlineButton onClick={loadTasksSecure}>Reîncearcă</OutlineButton>
                   </div>
                 </div>
               ) : (
@@ -413,11 +395,11 @@ export default function ExamTakePage() {
                       flexWrap: "wrap",
                     }}
                   >
-                    <div className="section-title">Questions</div>
+                    <div className="section-title">Întrebări</div>
 
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <OutlineButton onClick={() => submitAttempt(false)} disabled={submitting}>
-                        {submitting ? "Submitting…" : "Submit"}
+                        {submitting ? "Se trimite…" : "Trimite"}
                       </OutlineButton>
                     </div>
                   </div>
@@ -440,7 +422,7 @@ export default function ExamTakePage() {
                         }}
                       >
                         <div style={{ fontWeight: 760 }}>
-                          #{t.order} • {t.mark} points
+                          #{t.order} • {t.mark} puncte
                         </div>
 
                         <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
@@ -449,7 +431,7 @@ export default function ExamTakePage() {
 
                         <input
                           style={inputStyle}
-                          placeholder="Your answer…"
+                          placeholder="Răspunsul tău…"
                           value={answers[t.id] ?? ""}
                           onChange={(e) =>
                             setAnswers((prev) => ({ ...prev, [t.id]: e.target.value }))
@@ -460,7 +442,7 @@ export default function ExamTakePage() {
                   </div>
 
                   <div className="small" style={{ opacity: 0.75 }}>
-                    Tip: submission is enforced server-side based on the official exam start time and duration.
+                    Sfat: trimiterea este validată pe server în funcție de ora oficială de start și durată.
                   </div>
                 </div>
               )}

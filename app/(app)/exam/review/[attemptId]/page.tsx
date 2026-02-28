@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -10,7 +11,7 @@ import { formatWhen } from "@/lib/dateTime";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 type ExamReview = Schema["ExamReview"]["type"];
@@ -21,7 +22,6 @@ export default function ExamReviewPage() {
   const params = useParams<{ attemptId: string }>();
   const attemptId = useMemo(() => params.attemptId, [params.attemptId]);
 
-  const [loginId, setLoginId] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -40,14 +40,13 @@ export default function ExamReviewPage() {
         router.replace("/login");
         return;
       }
-      setLoginId(user.signInDetails?.loginId ?? user.username ?? "");
 
       // Fetch review via secured query
       const res = await client.queries.getExamReview({ attemptId });
 
       if (res.errors?.length) {
         console.error(res.errors);
-        setErr(res.errors[0]?.message ?? "Failed to load review.");
+        setErr(res.errors[0]?.message ?? "Încărcarea evaluării a eșuat.");
         setReview(null);
         setLoading(false);
         return;
@@ -57,7 +56,7 @@ export default function ExamReviewPage() {
       setLoading(false);
     })().catch((e) => {
       console.error(e);
-      setErr("Failed to load review.");
+      setErr("Încărcarea evaluării a eșuat.");
       setLoading(false);
     });
   }, [attemptId, router]);
@@ -74,53 +73,37 @@ export default function ExamReviewPage() {
 
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         {loading ? (
-          <p className="small">Loading review…</p>
+          <p className="small">Se încarcă evaluarea…</p>
         ) : err ? (
           <Card>
-            <div className="section-title">Could not load review</div>
+            <div className="section-title">Evaluarea nu a putut fi încărcată</div>
             <div className="small" style={{ marginTop: 8, opacity: 0.85 }}>
               {err}
             </div>
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <OutlineButton onClick={() => router.push("/dashboard")}>
-                Back to dashboard
+                Înapoi la panou
               </OutlineButton>
             </div>
           </Card>
         ) : !review ? (
-          <p className="small">No review data.</p>
+          <p className="small">Nu există date de evaluare.</p>
         ) : (
           <div className="panel-stack">
             {/* Header */}
             <div className="panel-top-row">
-              <div className="page-title">Exam review</div>
+              <div className="page-title">Evaluare examen</div>
               <div className="small" style={{ opacity: 0.8 }}>
-                Submitted: {formatWhen(submittedAt)}
+                Trimis: {formatWhen(submittedAt)}
               </div>
 
               <div className="panel-actions">
                 <OutlineButton onClick={() => router.push("/dashboard")}>
-                  Back to dashboard
+                  Înapoi la panou
                 </OutlineButton>
               </div>
             </div>
@@ -129,15 +112,15 @@ export default function ExamReviewPage() {
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div className="section-title">Result</div>
+                  <div className="section-title">Rezultat</div>
                   <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
-                    Correct: {correctCount} / {items.length}
+                    Corecte: {correctCount} / {items.length}
                   </div>
                 </div>
 
                 <div style={{ textAlign: "right" }}>
                   <div className="small" style={{ opacity: 0.75 }}>
-                    Score
+                    Scor
                   </div>
                   <div style={{ fontSize: 26, fontWeight: 760 }}>
                     {score} / {maxScore}
@@ -148,12 +131,12 @@ export default function ExamReviewPage() {
 
             {/* Breakdown */}
             <Card>
-              <div className="section-title">Answer breakdown</div>
+              <div className="section-title">Detaliere răspunsuri</div>
 
               <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
                 {items.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
-                    No items to show.
+                    Nu există elemente de afișat.
                   </p>
                 ) : (
                   items
@@ -181,10 +164,10 @@ export default function ExamReviewPage() {
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                             <div style={{ fontWeight: 760 }}>
-                              #{order} • {mark} points
+                              #{order} • {mark} puncte
                             </div>
                             <div className="small" style={{ opacity: 0.85 }}>
-                              {isCorrect ? "✅ Correct" : "❌ Incorrect"} • Earned: {earned}
+                              {isCorrect ? "✅ Corect" : "❌ Greșit"} • Obținut: {earned}
                             </div>
                           </div>
 
@@ -194,11 +177,11 @@ export default function ExamReviewPage() {
 
                           <div className="small" style={{ display: "grid", gap: 4 }}>
                             <div>
-                              <span style={{ fontWeight: 700 }}>Your answer:</span>{" "}
+                              <span style={{ fontWeight: 700 }}>Răspunsul tău:</span>{" "}
                               <span style={{ opacity: 0.85 }}>{userAnswer || "—"}</span>
                             </div>
                             <div>
-                              <span style={{ fontWeight: 700 }}>Correct answer:</span>{" "}
+                              <span style={{ fontWeight: 700 }}>Răspuns corect:</span>{" "}
                               <span style={{ opacity: 0.85 }}>{correctAnswer || "—"}</span>
                             </div>
                           </div>
@@ -210,7 +193,7 @@ export default function ExamReviewPage() {
             </Card>
 
             <div className="small" style={{ opacity: 0.75 }}>
-              Tip: The result is computed server-side at submission time.
+              Sfat: rezultatul este calculat pe server la momentul trimiterii.
             </div>
           </div>
         )}

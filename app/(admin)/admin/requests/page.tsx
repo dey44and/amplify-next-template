@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -11,7 +12,7 @@ import { isAdmin } from "@/lib/isAdmin";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser, signOut } from "aws-amplify/auth";
+import { getCurrentUser } from "aws-amplify/auth";
 
 const client = generateClient<Schema>();
 
@@ -21,7 +22,6 @@ type ExamRequest = Schema["ExamRequest"]["type"];
 export default function AdminRequestsPage() {
   const router = useRouter();
 
-  const [loginId, setLoginId] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [requests, setRequests] = useState<ExamRequest[]>([]);
@@ -64,7 +64,6 @@ export default function AdminRequestsPage() {
         router.replace("/login");
         return;
       }
-      setLoginId(user.signInDetails?.loginId ?? user.username ?? "");
 
       // Admin gate -> /dashboard
       const ok = await isAdmin();
@@ -99,7 +98,7 @@ export default function AdminRequestsPage() {
 
       if (res.errors?.length) {
         console.error(res.errors);
-        alert("Failed to update request (check console).");
+        alert("Actualizarea cererii a eșuat (verifică consola).");
         return;
       }
 
@@ -126,51 +125,35 @@ export default function AdminRequestsPage() {
 
   return (
     <>
-      <SiteHeader
-        rightSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="small" style={{ opacity: 0.75 }}>
-              {loginId}
-            </span>
-            <OutlineButton
-              onClick={async () => {
-                await signOut();
-                router.replace("/login");
-              }}
-            >
-              Sign out
-            </OutlineButton>
-          </div>
-        }
-      />
+      <SiteHeader rightSlot={<HeaderUserActions />} />
 
       <PageShell>
         <div className="panel-stack">
           <div className="panel-top-row">
-            <div className="page-title">Admin • Requests</div>
+            <div className="page-title">Administrator • Cereri</div>
 
             <div className="small" style={{ marginLeft: 8 }}>
-              Approve or reject exam access requests.
+              Aprobă sau respinge cererile de acces la examene.
             </div>
 
             <div className="panel-actions">
               <OutlineButton onClick={() => refresh()} disabled={loading}>
-                Refresh
+                Reîncarcă
               </OutlineButton>
             </div>
           </div>
 
           <Card>
-            <div className="section-title">Pending requests</div>
+            <div className="section-title">Cereri în așteptare</div>
 
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {loading ? (
                 <p className="small" style={{ margin: 0 }}>
-                  Loading…
+                  Se încarcă…
                 </p>
               ) : requests.length === 0 ? (
                 <p className="small" style={{ margin: 0 }}>
-                  No pending requests.
+                  Nu există cereri în așteptare.
                 </p>
               ) : (
                 requests.map((r) => {
@@ -189,23 +172,23 @@ export default function AdminRequestsPage() {
                       }}
                     >
                       <div style={{ fontWeight: 760, letterSpacing: -0.2 }}>
-                        {examTitleById.get(examId ?? "") ?? examId ?? "Unknown exam"}
+                        {examTitleById.get(examId ?? "") ?? examId ?? "Simulare necunoscută"}
                       </div>
 
                       <div className="small" style={{ opacity: 0.85 }}>
-                        Exam ID: {examId ?? "—"}
+                        ID simulare: {examId ?? "—"}
                       </div>
 
                       <div className="small">
-                        Student (owner sub): <span style={{ opacity: 0.85 }}>{owner ?? "—"}</span>
+                        Elev (owner sub): <span style={{ opacity: 0.85 }}>{owner ?? "—"}</span>
                       </div>
 
                       <div className="small" style={{ opacity: 0.85 }}>
-                        Requested: {formatWhen(r.requestedAt)}
+                        Solicitat la: {formatWhen(r.requestedAt)}
                       </div>
 
                       <input
-                        placeholder="Optional note (shown to student later if you use it)"
+                        placeholder="Notă opțională (afișată elevului ulterior, dacă o folosești)"
                         value={noteByKey[key] ?? ""}
                         onChange={(e) => setNoteByKey((p) => ({ ...p, [key]: e.target.value }))}
                         style={inputStyle}
@@ -216,7 +199,7 @@ export default function AdminRequestsPage() {
                           onClick={() => decide(r, "APPROVED")}
                           disabled={workingKey === key}
                         >
-                          {workingKey === key ? "Working…" : "Approve"}
+                          {workingKey === key ? "Se procesează…" : "Aprobă"}
                         </OutlineButton>
 
                         <button
@@ -233,7 +216,7 @@ export default function AdminRequestsPage() {
                             textDecoration: "underline",
                           }}
                         >
-                          Reject
+                          Respinge
                         </button>
                       </div>
                     </div>
