@@ -8,7 +8,6 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
 import { formatWhen, toTimestamp } from "@/lib/dateTime";
-import { getExamWindow } from "@/lib/examWindow";
 import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
@@ -95,30 +94,6 @@ async function fetchAdmissionPerformance(admissionType?: string): Promise<Admiss
     data: raw.data?.getAdmissionPerformance ?? null,
     errors: raw.errors,
   };
-}
-
-function GrayButton({ label, title }: { label: string; title?: string }) {
-  return (
-    <button
-      disabled
-      title={title}
-      style={{
-        background: "rgba(0,0,0,0.05)",
-        border: "1px solid rgba(0,0,0,0.10)",
-        padding: "10px 12px",
-        borderRadius: 12,
-
-        fontWeight: 600,
-        fontSize: 14,
-
-        opacity: 1,
-        color: "rgba(0,0,0,0.55)",
-        cursor: "not-allowed",
-      }}
-    >
-      {label}
-    </button>
-  );
 }
 
 function getExamStartMs(exam: Pick<Exam, "startAt">) {
@@ -253,13 +228,6 @@ export default function StatsPage() {
   const [trendLoading, setTrendLoading] = useState(false);
   const [trendError, setTrendError] = useState<string | null>(null);
   const [trendData, setTrendData] = useState<AdmissionPerformance | null>(null);
-
-  // used for "unlock review after exam ends"
-  const [nowMs, setNowMs] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 15_000);
-    return () => clearInterval(t);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -429,18 +397,6 @@ export default function StatsPage() {
     return Math.round(total / latestAttempts.length);
   }, [latestAttempts]);
 
-  const reviewLockedCount = useMemo(() => {
-    let count = 0;
-    for (const exam of examsSortedByStartDesc) {
-      const latest = attemptsByExamId.get(exam.id)?.[0];
-      if (!latest) continue;
-      const { endMs } = getExamWindow(exam);
-      const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
-      if (!reviewUnlocked) count += 1;
-    }
-    return count;
-  }, [attemptsByExamId, examsSortedByStartDesc, nowMs]);
-
   const trendPoints = useMemo(() => {
     const points = Array.isArray(trendData?.points)
       ? trendData.points.filter((point): point is PerformancePoint => !!point)
@@ -542,9 +498,9 @@ export default function StatsPage() {
                 </div>
 
                 <div className="metric-tile soft-mint">
-                  <div className="metric-label">Rezultate blocate</div>
-                  <div className="metric-value">{reviewLockedCount}</div>
-                  <div className="metric-helper">Se deblochează automat după încheierea examenului</div>
+                  <div className="metric-label">Rezultate disponibile</div>
+                  <div className="metric-value">{attemptedExamsCount}</div>
+                  <div className="metric-helper">Le poți deschide imediat în lista de mai jos</div>
                 </div>
               </div>
             </Card>
@@ -670,7 +626,7 @@ export default function StatsPage() {
               <div className="section-title">Rezultate pe simulare</div>
 
               <div className="small" style={{ marginTop: 6, opacity: 0.8 }}>
-                Rezultatele apar după trimitere. Deblocarea are loc după încheierea intervalului de examen.
+                Rezultatele apar imediat după trimitere.
               </div>
 
               <div className="exam-list">
@@ -682,9 +638,6 @@ export default function StatsPage() {
                   examsSortedByStartDesc.map((e) => {
                     const examAttempts = attemptsByExamId.get(e.id) ?? [];
                     const latest = examAttempts[0] ?? null;
-
-                    const { endMs } = getExamWindow(e);
-                    const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
 
                     return (
                       <div key={e.id} className="exam-item">
@@ -708,25 +661,14 @@ export default function StatsPage() {
 
                         <div className="exam-actions">
                           {latest &&
-                            (reviewUnlocked ? (
+                            (
                               <OutlineButton
                                 onClick={() => router.push(`/exam/review/${latest.id}`)}
                               >
                                 Vezi rezultatele
                               </OutlineButton>
-                            ) : (
-                              <GrayButton
-                                label="Rezultate blocate"
-                                title="Rezultatele se deblochează după încheierea intervalului de examen."
-                              />
-                            ))}
+                            )}
                         </div>
-
-                        {!reviewUnlocked && latest && (
-                          <div className="small" style={{ opacity: 0.7 }}>
-                            Rezultatele vor fi disponibile după încheierea examenului.
-                          </div>
-                        )}
                       </div>
                     );
                   })

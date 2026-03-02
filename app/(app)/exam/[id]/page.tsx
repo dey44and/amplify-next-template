@@ -22,6 +22,32 @@ type Exam = Schema["MockExam"]["type"];
 type Task = Schema["Task"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
 
+function mapExamFlowError(raw?: string) {
+  const msg = String(raw ?? "");
+  if (msg.includes("NOT_AUTHORIZED_FOR_EXAM")) {
+    return "Nu ai acces la acest examen. Trimite o cerere de acces și încearcă din nou după aprobare.";
+  }
+  if (msg.includes("EXAM_NOT_STARTED")) {
+    return "Examenul nu a început încă.";
+  }
+  if (msg.includes("EXAM_ENDED")) {
+    return "Intervalul examenului s-a încheiat.";
+  }
+  if (msg.includes("EXAM_INVALID_WINDOW")) {
+    return "Programul examenului este invalid. Contactează administratorul.";
+  }
+  if (msg.includes("EXAM_HAS_NO_TASKS")) {
+    return "Examenul nu are itemi configurați. Contactează administratorul.";
+  }
+  if (msg.includes("ALREADY_SUBMITTED")) {
+    return "Ai trimis deja această simulare.";
+  }
+  if (msg.includes("SUBMISSION_IN_PROGRESS")) {
+    return "Trimiterea este deja în curs. Așteaptă câteva secunde și încearcă din nou.";
+  }
+  return raw ?? "Operația a eșuat.";
+}
+
 function msToClock(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -45,6 +71,7 @@ export default function ExamTakePage() {
 
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [triedLoadingTasks, setTriedLoadingTasks] = useState(false);
+  const [tasksLoadError, setTasksLoadError] = useState<string | null>(null);
 
   const [nowMs, setNowMs] = useState(Date.now());
   const [startedAtIso, setStartedAtIso] = useState<string | null>(null);
@@ -54,6 +81,7 @@ export default function ExamTakePage() {
 
   // used to prevent repeated submissions (manual + auto)
   const submittedRef = useRef(false);
+  const autoSubmitTriedRef = useRef(false);
 
   // derived window
   const { startMs, endMs } = useMemo(
@@ -120,11 +148,13 @@ export default function ExamTakePage() {
   async function loadTasksSecure() {
     setLoadingTasks(true);
     setSubmitError(null);
+    setTasksLoadError(null);
 
     try {
       const res = await client.queries.listTasksForExam({ examId });
       if (res.errors?.length) {
         console.error(res.errors);
+        setTasksLoadError(mapExamFlowError(res.errors[0]?.message));
         setTasks([]);
         return;
       }
@@ -132,6 +162,10 @@ export default function ExamTakePage() {
       const raw = (res.data ?? []).filter((t): t is Task => !!t);
       const data = raw.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setTasks(data);
+    } catch (e) {
+      console.error(e);
+      setTasksLoadError("Nu am putut încărca întrebările.");
+      setTasks([]);
     } finally {
       setLoadingTasks(false);
     }
@@ -181,19 +215,17 @@ export default function ExamTakePage() {
 
       if (res.errors?.length || !res.data) {
         console.error(res.errors);
-        const msg = res.errors?.[0]?.message ?? "Trimiterea a eșuat.";
+        const rawMsg = res.errors?.[0]?.message ?? "Trimiterea a eșuat.";
+        const msg = mapExamFlowError(rawMsg);
 
         // if server says already submitted, redirect user to stats (or you can refetch latest attempt)
-        if (msg.includes("ALREADY_SUBMITTED")) {
+        if (rawMsg.includes("ALREADY_SUBMITTED")) {
           submittedRef.current = true;
           router.replace("/stats");
           return;
         }
 
         setSubmitError(msg);
-
-        // if auto submit failed, stop re-spamming
-        if (auto) submittedRef.current = true;
         return;
       }
 
@@ -252,7 +284,8 @@ export default function ExamTakePage() {
     }
 
     // auto-submit at/after end (best effort once)
-    if (isAfter && !submittedRef.current && tasks.length > 0) {
+    if (isAfter && !submittedRef.current && tasks.length > 0 && !autoSubmitTriedRef.current) {
+      autoSubmitTriedRef.current = true;
       submitAttempt(true).catch(console.error);
     }
 
@@ -355,9 +388,23 @@ export default function ExamTakePage() {
                       Examenul nu a început încă.
                     </p>
                   ) : isAfter ? (
-                    <p className="small" style={{ margin: 0 }}>
-                      Intervalul examenului s-a încheiat.
-                    </p>
+                    <>
+                      <p className="small" style={{ margin: 0 }}>
+                        Intervalul examenului s-a încheiat.
+                      </p>
+                      {submitError && (
+                        <>
+                          <p className="small" style={{ margin: 0, color: "rgba(180,0,0,0.85)" }}>
+                            {submitError}
+                          </p>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <OutlineButton onClick={() => submitAttempt(false)} disabled={submitting}>
+                              {submitting ? "Se trimite…" : "Reîncearcă trimiterea"}
+                            </OutlineButton>
+                          </div>
+                        </>
+                      )}
+                    </>
                   ) : (
                     <p className="small" style={{ margin: 0 }}>
                       Programul nu poate fi determinat.
@@ -378,8 +425,8 @@ export default function ExamTakePage() {
                 <div style={{ display: "grid", gap: 10 }}>
                   <div className="section-title">Fără acces sau fără întrebări</div>
                   <p className="small" style={{ margin: 0, opacity: 0.85 }}>
-                    Dacă ai cerut acces, așteaptă aprobarea. Dacă ai acces și tot vezi acest mesaj,
-                    verifică dacă examenul are întrebări.
+                    {tasksLoadError ??
+                      "Dacă ai cerut acces, așteaptă aprobarea. Dacă ai acces și tot vezi acest mesaj, verifică dacă examenul are întrebări."}
                   </p>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <OutlineButton onClick={requestAccess}>Solicită acces</OutlineButton>

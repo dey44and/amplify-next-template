@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
 import { formatWhen, toTimestamp } from "@/lib/dateTime";
-import { getExamState, getExamWindow } from "@/lib/examWindow";
+import { getExamState } from "@/lib/examWindow";
 import { isAdmin as checkIsAdmin } from "@/lib/isAdmin";
 import { notNull } from "@/lib/notNull";
 
@@ -23,6 +23,7 @@ type Exam = Schema["MockExam"]["type"];
 type ExamRequest = Schema["ExamRequest"]["type"];
 type ExamAccess = Schema["ExamAccess"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
+type DashboardExamGroup = { admissionType: string; exams: Exam[] };
 
 function GrayButton({ label, title }: { label: string; title?: string }) {
   return (
@@ -62,6 +63,7 @@ export default function DashboardPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [nowMs, setNowMs] = useState(Date.now());
+  const [expandedByType, setExpandedByType] = useState<Record<string, boolean>>({});
 
   // 1s tick keeps state accurate (start/lock/unlock)
   useEffect(() => {
@@ -117,10 +119,50 @@ export default function DashboardPage() {
     () =>
       exams.filter((exam) => {
         const state = getExamState(exam, nowMs);
-        return state === "before" || state === "during";
+        if (state !== "before" && state !== "during") return false;
+        if (!isAdmin && latestAttemptByExamId.has(exam.id)) return false;
+        return true;
       }),
-    [exams, nowMs]
+    [exams, isAdmin, latestAttemptByExamId, nowMs]
   );
+  const visibleDashboardExamGroups = useMemo<DashboardExamGroup[]>(() => {
+    const groups = new Map<string, Exam[]>();
+    for (const exam of visibleDashboardExams) {
+      const admissionType = (exam.admissionType ?? "").trim() || "Nespecificat";
+      const existing = groups.get(admissionType);
+      if (existing) {
+        existing.push(exam);
+      } else {
+        groups.set(admissionType, [exam]);
+      }
+    }
+
+    return Array.from(groups.entries()).map(([admissionType, groupedExams]) => ({
+      admissionType,
+      exams: groupedExams,
+    }));
+  }, [visibleDashboardExams]);
+
+  useEffect(() => {
+    setExpandedByType((prev) => {
+      const next: Record<string, boolean> = {};
+      let changed = false;
+
+      for (const group of visibleDashboardExamGroups) {
+        if (group.admissionType in prev) {
+          next[group.admissionType] = prev[group.admissionType];
+        } else {
+          next[group.admissionType] = true;
+          changed = true;
+        }
+      }
+
+      if (!changed && Object.keys(prev).length === Object.keys(next).length) {
+        return prev;
+      }
+      return next;
+    });
+  }, [visibleDashboardExamGroups]);
   const pendingCount = useMemo(
     () => requests.filter((r) => r.status === "PENDING").length,
     [requests]
@@ -263,6 +305,13 @@ export default function DashboardPage() {
     );
   }
 
+  function toggleAdmissionGroup(admissionType: string) {
+    setExpandedByType((prev) => ({
+      ...prev,
+      [admissionType]: !(prev[admissionType] ?? true),
+    }));
+  }
+
   return (
     <>
       <SiteHeader rightSlot={<HeaderUserActions />} />
@@ -331,108 +380,119 @@ export default function DashboardPage() {
                     Simulări disponibile
                   </div>
                   <div className="small" style={{ marginTop: 6 }}>
-                    Sunt afișate doar simulările viitoare sau în desfășurare.
+                    Sunt afișate doar simulările viitoare sau în desfășurare pe care nu le-ai trimis încă.
                   </div>
                 </div>
               </div>
 
-              <div className="exam-list">
+              <div className="exam-groups">
                 {visibleDashboardExams.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
                     Nu există simulări viitoare în acest moment.
                   </p>
                 ) : (
-                  visibleDashboardExams.map((e) => {
-                    const hasAccess = accessByExamId.has(e.id);
-                    const req = requestByExamId.get(e.id);
-                    const status = req?.status;
-
-                    const examState = getExamState(e, nowMs);
-
-                    // latest attempt (if submitted)
-                    const latestAttempt = latestAttemptByExamId.get(e.id);
-
-                    // ✅ Review lock logic (same as stats page)
-                    const { endMs } = getExamWindow(e);
-                    const reviewUnlocked = Number.isFinite(endMs) ? nowMs >= endMs : true;
+                  visibleDashboardExamGroups.map((group, index) => {
+                    const isExpanded = expandedByType[group.admissionType] ?? true;
+                    const panelId = `exam-group-${index}`;
+                    const groupCountLabel =
+                      group.exams.length === 1
+                        ? "1 simulare"
+                        : `${group.exams.length} simulări`;
 
                     return (
-                      <div key={e.id} className="exam-item">
-                        <div className="exam-item-title">{e.title}</div>
-                        <div className="small">Tip admitere: {e.admissionType}</div>
+                      <section
+                        key={group.admissionType}
+                        className={`exam-type-group${isExpanded ? " is-open" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="exam-type-toggle"
+                          onClick={() => toggleAdmissionGroup(group.admissionType)}
+                          aria-expanded={isExpanded}
+                          aria-controls={panelId}
+                        >
+                          <span className="exam-type-head">
+                            <span className="exam-type-title">{group.admissionType}</span>
+                            <span className="exam-type-count">{groupCountLabel}</span>
+                          </span>
+                          <span
+                            className={`exam-type-chevron${isExpanded ? " is-open" : ""}`}
+                            aria-hidden="true"
+                          >
+                            ▾
+                          </span>
+                        </button>
 
-                        <div className="small" style={{ opacity: 0.85 }}>
-                          Începe: {formatWhen(e.startAt)} • Durată: {e.durationMinutes ?? "—"}{" "}
-                          min
-                        </div>
+                        {isExpanded && (
+                          <div id={panelId} className="exam-list exam-list--nested">
+                            {group.exams.map((e) => {
+                              const hasAccess = accessByExamId.has(e.id);
+                              const req = requestByExamId.get(e.id);
+                              const status = req?.status;
 
-                        <div className="exam-actions">
-                          {isAdmin ? (
-                            <OutlineButton onClick={() => router.push(`/admin/exams/${e.id}`)}>
-                              Gestionează simularea
-                            </OutlineButton>
-                          ) : latestAttempt ? (
-                            // ✅ submitted: show results, but lock until exam ends
-                            reviewUnlocked ? (
-                              <OutlineButton
-                                onClick={() => router.push(`/exam/review/${latestAttempt.id}`)}
-                              >
-                                Vezi rezultatele
-                              </OutlineButton>
-                            ) : (
-                              <GrayButton
-                                label="Rezultate blocate"
-                                title="Rezultatele se deblochează după încheierea intervalului de examen."
-                              />
-                            )
-                          ) : hasAccess ? (
-                            examState === "during" ? (
-                              <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
-                                Începe examenul
-                              </OutlineButton>
-                            ) : examState === "before" ? (
-                              <GrayButton
-                                label="Neînceput"
-                                title={`Începe la ${formatWhen(e.startAt)}`}
-                              />
-                            ) : (
-                              <GrayButton label="Examen încheiat" />
-                            )
-                          ) : status === "PENDING" ? (
-                            <GrayButton label="Cerere în așteptare" />
-                          ) : status === "REJECTED" ? (
-                            <>
-                              <GrayButton label="Respins" />
-                              <button
-                                onClick={() => deleteRequest(req!)}
-                                style={{
-                                  background: "transparent",
-                                  border: "none",
-                                  padding: "10px 0",
-                                  cursor: "pointer",
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  color: "rgba(0,0,0,0.55)",
-                                  textDecoration: "underline",
-                                }}
-                              >
-                                Șterge cererea
-                              </button>
-                            </>
-                          ) : (
-                            <OutlineButton onClick={() => requestAccess(e)}>
-                              Solicită acces
-                            </OutlineButton>
-                          )}
-                        </div>
+                              const examState = getExamState(e, nowMs);
 
-                        {/* Optional helper text when locked */}
-                        {!isAdmin && latestAttempt && !reviewUnlocked && (
-                          <div className="small" style={{ opacity: 0.7 }}>
-                            Rezultatele vor fi disponibile după încheierea examenului.
+                              return (
+                                <div key={e.id} className="exam-item">
+                                  <div className="exam-item-title">{e.title}</div>
+                                  <div className="small">Tip admitere: {e.admissionType}</div>
+
+                                  <div className="small" style={{ opacity: 0.85 }}>
+                                    Începe: {formatWhen(e.startAt)} • Durată: {e.durationMinutes ?? "—"}{" "}
+                                    min
+                                  </div>
+
+                                  <div className="exam-actions">
+                                    {isAdmin ? (
+                                      <OutlineButton onClick={() => router.push(`/admin/exams/${e.id}`)}>
+                                        Gestionează simularea
+                                      </OutlineButton>
+                                    ) : hasAccess ? (
+                                      examState === "during" ? (
+                                        <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
+                                          Începe examenul
+                                        </OutlineButton>
+                                      ) : examState === "before" ? (
+                                        <GrayButton
+                                          label="Neînceput"
+                                          title={`Începe la ${formatWhen(e.startAt)}`}
+                                        />
+                                      ) : (
+                                        <GrayButton label="Examen încheiat" />
+                                      )
+                                    ) : status === "PENDING" ? (
+                                      <GrayButton label="Cerere în așteptare" />
+                                    ) : status === "REJECTED" ? (
+                                      <>
+                                        <GrayButton label="Respins" />
+                                        <button
+                                          onClick={() => deleteRequest(req!)}
+                                          style={{
+                                            background: "transparent",
+                                            border: "none",
+                                            padding: "10px 0",
+                                            cursor: "pointer",
+                                            fontSize: 13,
+                                            fontWeight: 700,
+                                            color: "rgba(0,0,0,0.55)",
+                                            textDecoration: "underline",
+                                          }}
+                                        >
+                                          Șterge cererea
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <OutlineButton onClick={() => requestAccess(e)}>
+                                        Solicită acces
+                                      </OutlineButton>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
-                      </div>
+                      </section>
                     );
                   })
                 )}

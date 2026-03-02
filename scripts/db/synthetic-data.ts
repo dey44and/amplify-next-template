@@ -16,6 +16,7 @@ const MODEL_NAMES = [
   "ExamRequest",
   "ExamAccess",
   "ExamAttempt",
+  "ExamAttemptLock",
 ] as const;
 
 const RESTORE_ORDER = [
@@ -26,6 +27,7 @@ const RESTORE_ORDER = [
   "ExamRequest",
   "ExamAccess",
   "ExamAttempt",
+  "ExamAttemptLock",
 ] as const;
 
 type DynAttr = {
@@ -204,6 +206,7 @@ function deterministicTableMap(ctx: CliContext) {
     ExamRequest: `ExamRequest-${ctx.apiId}-${ctx.tableSuffix}`,
     ExamAccess: `ExamAccess-${ctx.apiId}-${ctx.tableSuffix}`,
     ExamAttempt: `ExamAttempt-${ctx.apiId}-${ctx.tableSuffix}`,
+    ExamAttemptLock: `ExamAttemptLock-${ctx.apiId}-${ctx.tableSuffix}`,
   };
   return map;
 }

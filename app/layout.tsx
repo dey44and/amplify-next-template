@@ -28,7 +28,12 @@ export default function RootLayout({
   return (
     <html lang="ro" className={`${display.variable} ${body.variable}`}>
       <body>
-        <AmplifyClientProvider>{children}</AmplifyClientProvider>
+        <AmplifyClientProvider>
+          <div className="site-root">
+            <div className="site-content">{children}</div>
+            <footer className="site-footer">© 2026 Mock Exams</footer>
+          </div>
+        </AmplifyClientProvider>
       </body>
     </html>
   );

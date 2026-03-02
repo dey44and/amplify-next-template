@@ -94,12 +94,29 @@ const schema = a.schema({
       startedAt: a.datetime(),
       endedAt: a.datetime(),
       answersJson: a.string(),
+      reviewItemsJson: a.string(),
     })
     .authorization((allow) => [
-      allow.ownerDefinedIn("userId").identityClaim("sub").to(["create", "read"]),
+      // Students can read only their own attempts.
+      // Creation is forced through submitExamAttempt mutation (server-side checks).
+      allow.ownerDefinedIn("userId").identityClaim("sub").to(["read"]),
       allow.group("Admin").to(["read"]),
       // (allow as any).resource(submitExamAttemptFn).to(["create", "read"]),
       // (allow as any).resource(getExamReviewFn).to(["read"]),
+    ]),
+
+  ExamAttemptLock: a
+    .model({
+      owner: a.string().required(),
+      examId: a.id().required(),
+      createdAt: a.datetime(),
+      finalizedAt: a.datetime(),
+      attemptId: a.id(),
+    })
+    .identifier(["owner", "examId"])
+    .authorization((allow) => [
+      // Locks are managed only by backend functions.
+      allow.group("Admin").to(["read"]),
     ]),
 
     ExamRequestStatus: a.enum(["PENDING", "APPROVED", "REJECTED"]),

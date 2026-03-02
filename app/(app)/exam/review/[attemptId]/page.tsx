@@ -18,6 +18,23 @@ const client = generateClient<Schema>();
 type ExamReview = Schema["ExamReview"]["type"];
 type ReviewItem = Schema["ReviewItem"]["type"];
 
+function mapReviewErrorMessage(raw?: string) {
+  const msg = String(raw ?? "");
+  if (msg.includes("REVIEW_LOCKED")) {
+    return "Evaluarea devine disponibilă după încheierea oficială a intervalului de examen.";
+  }
+  if (msg.includes("FORBIDDEN")) {
+    return "Nu ai permisiune pentru această evaluare.";
+  }
+  if (msg.includes("ATTEMPT_NOT_FOUND")) {
+    return "Încercarea nu a fost găsită.";
+  }
+  if (msg.includes("EXAM_INVALID_WINDOW")) {
+    return "Programul examenului este invalid. Contactează administratorul.";
+  }
+  return raw ?? "Încărcarea evaluării a eșuat.";
+}
+
 export default function ExamReviewPage() {
   const router = useRouter();
   const params = useParams<{ attemptId: string }>();
@@ -34,9 +51,8 @@ export default function ExamReviewPage() {
       setErr(null);
 
       // Auth gate
-      let user;
       try {
-        user = await getCurrentUser();
+        await getCurrentUser();
       } catch {
         router.replace("/login");
         return;
@@ -47,7 +63,7 @@ export default function ExamReviewPage() {
 
       if (res.errors?.length) {
         console.error(res.errors);
-        setErr(res.errors[0]?.message ?? "Încărcarea evaluării a eșuat.");
+        setErr(mapReviewErrorMessage(res.errors[0]?.message));
         setReview(null);
         setLoading(false);
         return;
