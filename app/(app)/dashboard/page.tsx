@@ -113,6 +113,14 @@ export default function DashboardPage() {
     () => exams.filter((exam) => getExamState(exam, nowMs) === "before").length,
     [exams, nowMs]
   );
+  const visibleDashboardExams = useMemo(
+    () =>
+      exams.filter((exam) => {
+        const state = getExamState(exam, nowMs);
+        return state === "before" || state === "during";
+      }),
+    [exams, nowMs]
+  );
   const pendingCount = useMemo(
     () => requests.filter((r) => r.status === "PENDING").length,
     [requests]
@@ -292,7 +300,7 @@ export default function DashboardPage() {
               <div className="metric-grid">
                 <div className="metric-tile soft-blue">
                   <div className="metric-label">Simulări disponibile</div>
-                  <div className="metric-value">{exams.length}</div>
+                  <div className="metric-value">{visibleDashboardExams.length}</div>
                   <div className="metric-helper">
                     {upcomingLabel}
                   </div>
@@ -323,18 +331,18 @@ export default function DashboardPage() {
                     Simulări disponibile
                   </div>
                   <div className="small" style={{ marginTop: 6 }}>
-                    Alege o simulare și începe antrenamentul.
+                    Sunt afișate doar simulările viitoare sau în desfășurare.
                   </div>
                 </div>
               </div>
 
               <div className="exam-list">
-                {exams.length === 0 ? (
+                {visibleDashboardExams.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
-                    Nu există încă simulări. (Un administrator trebuie să le creeze.)
+                    Nu există simulări viitoare în acest moment.
                   </p>
                 ) : (
-                  exams.map((e) => {
+                  visibleDashboardExams.map((e) => {
                     const hasAccess = accessByExamId.has(e.id);
                     const req = requestByExamId.get(e.id);
                     const status = req?.status;

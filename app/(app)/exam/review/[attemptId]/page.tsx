@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { HeaderUserActions } from "@/components/HeaderUserActions";
+import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -171,18 +172,24 @@ export default function ExamReviewPage() {
                             </div>
                           </div>
 
-                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                            {question}
-                          </div>
+                          <MathText text={question} />
 
                           <div className="small" style={{ display: "grid", gap: 4 }}>
                             <div>
                               <span style={{ fontWeight: 700 }}>Răspunsul tău:</span>{" "}
-                              <span style={{ opacity: 0.85 }}>{userAnswer || "—"}</span>
+                              <MathText
+                                inline
+                                text={userAnswer || "—"}
+                                style={{ opacity: 0.85 }}
+                              />
                             </div>
                             <div>
                               <span style={{ fontWeight: 700 }}>Răspuns corect:</span>{" "}
-                              <span style={{ opacity: 0.85 }}>{correctAnswer || "—"}</span>
+                              <MathText
+                                inline
+                                text={correctAnswer || "—"}
+                                style={{ opacity: 0.85 }}
+                              />
                             </div>
                           </div>
                         </div>

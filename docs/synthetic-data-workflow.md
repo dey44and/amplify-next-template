@@ -28,11 +28,19 @@ npm run db:demo -- --user-sub <your-cognito-sub>
 npm run db:restore -- --backup .tmp/db-backups/my-backup.json
 ```
 
+- Clear app data tables (keeps Cognito accounts; optional keep profile rows):
+
+```bash
+npm run db:clear -- --profile <aws-profile>
+npm run db:clear -- --profile <aws-profile> --keep-user-profiles
+```
+
 ## Notes
 
 - The scripts read region and API id from `amplify_outputs.json`.
 - You can override AppSync API id with `--api-id <id>` if local outputs are stale.
 - `restore` clears and repopulates model tables from the backup snapshot.
+- `clear` removes rows from app model tables only (DynamoDB). Cognito users are not deleted.
 - If `--user-sub` is not passed, the script tries to infer it from `UserProfile`.
 - If multiple user profiles exist, pass `--user-sub` explicitly for predictable personal trend lines.
 - If your role cannot call `appsync:ListDataSources`, the script falls back to table names with format `<Model>-<ApiId>-NONE`.

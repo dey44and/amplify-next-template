@@ -10,6 +10,7 @@
     "db:backup": "node --import tsx scripts/db/synthetic-data.ts backup",
     "db:seed": "node --import tsx scripts/db/synthetic-data.ts seed",
     "db:restore": "node --import tsx scripts/db/synthetic-data.ts restore",
+    "db:clear": "node --import tsx scripts/db/synthetic-data.ts clear",
     "db:demo": "node --import tsx scripts/db/synthetic-data.ts demo"
   },
   "dependencies": {

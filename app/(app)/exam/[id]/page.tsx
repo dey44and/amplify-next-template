@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { HeaderUserActions } from "@/components/HeaderUserActions";
+import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -425,9 +426,7 @@ export default function ExamTakePage() {
                           #{t.order} • {t.mark} puncte
                         </div>
 
-                        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                          {t.question}
-                        </div>
+                        <MathText text={String(t.question ?? "")} />
 
                         <input
                           style={inputStyle}

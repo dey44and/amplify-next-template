@@ -389,6 +389,28 @@ async function clearTable(ctx: CliContext, tableName: string) {
   await batchWrite(ctx, tableName, deletes);
 }
 
+async function clearData(
+  ctx: CliContext,
+  options: {
+    keepUserProfiles: boolean;
+  }
+) {
+  const tableMap = await discoverModelTables(ctx);
+  const modelsToClear = MODEL_NAMES.filter((modelName) => {
+    if (options.keepUserProfiles && modelName === "UserProfile") return false;
+    return true;
+  });
+
+  for (const modelName of modelsToClear) {
+    const tableName = tableMap[modelName];
+    process.stdout.write(`Clearing ${modelName} (${tableName})...\n`);
+    await clearTable(ctx, tableName);
+  }
+
+  const kept = options.keepUserProfiles ? " Kept UserProfile rows." : "";
+  process.stdout.write(`Clear complete.${kept}\n`);
+}
+
 function itemString(item: DynItem, key: string) {
   const value = item[key];
   return value?.S;
@@ -722,10 +744,12 @@ Usage:
   npx tsx scripts/db/synthetic-data.ts backup [--out <path>] [--profile <aws-profile>] [--region <aws-region>] [--api-id <appsync-api-id>] [--table-suffix <suffix>]
   npx tsx scripts/db/synthetic-data.ts seed [--user-sub <sub>] [--weeks <n>] [--cohort-size <n>] [--admission-types <csv>] [--profile <aws-profile>] [--region <aws-region>] [--api-id <appsync-api-id>] [--table-suffix <suffix>]
   npx tsx scripts/db/synthetic-data.ts restore --backup <path> [--profile <aws-profile>] [--region <aws-region>] [--api-id <appsync-api-id>] [--table-suffix <suffix>]
+  npx tsx scripts/db/synthetic-data.ts clear [--keep-user-profiles] [--profile <aws-profile>] [--region <aws-region>] [--api-id <appsync-api-id>] [--table-suffix <suffix>]
   npx tsx scripts/db/synthetic-data.ts demo [--out <path>] [--user-sub <sub>] [--weeks <n>] [--cohort-size <n>] [--admission-types <csv>] [--profile <aws-profile>] [--region <aws-region>] [--api-id <appsync-api-id>] [--table-suffix <suffix>]
 
 Notes:
   - "demo" does: backup -> seed synthetic attempts.
+  - "clear" wipes model tables in DynamoDB (Cognito accounts are not touched).
   - "restore" resets all known model tables to the exact backup snapshot.
   - Region defaults to amplify_outputs.json data.aws_region.
   - API id defaults to parsed value from amplify_outputs.json data.url.
@@ -793,6 +817,12 @@ async function main() {
     }
 
     await restoreBackup(ctx, path.resolve(backupPath));
+    return;
+  }
+
+  if (command === "clear") {
+    const keepUserProfiles = hasFlag(args, "--keep-user-profiles");
+    await clearData(ctx, { keepUserProfiles });
     return;
   }
 

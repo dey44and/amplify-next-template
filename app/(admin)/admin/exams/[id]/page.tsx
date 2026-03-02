@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { HeaderUserActions } from "@/components/HeaderUserActions";
+import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
@@ -412,6 +413,28 @@ export default function AdminExamDetailPage() {
                   style={textAreaStyle}
                 />
 
+                <div className="small" style={{ opacity: 0.78 }}>
+                  Poți folosi formule LaTeX: inline cu <code>$...$</code> sau bloc cu <code>$$...$$</code>.
+                </div>
+
+                {newTask.question.trim() ? (
+                  <div
+                    style={{
+                      border: "1px dashed var(--border)",
+                      borderRadius: 12,
+                      padding: 12,
+                      background: "var(--surface-soft)",
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div className="small" style={{ opacity: 0.78 }}>
+                      Previzualizare întrebare
+                    </div>
+                    <MathText text={newTask.question} />
+                  </div>
+                ) : null}
+
                 <div style={{ display: "flex", gap: 10 }}>
                   <OutlineButton onClick={addTask} disabled={addingTask}>
                     {addingTask ? "Se adaugă…" : "Adaugă item"}
@@ -445,14 +468,12 @@ export default function AdminExamDetailPage() {
                             #{t.order} • {t.mark} puncte
                           </div>
 
-                          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                            {t.question}
-                          </div>
+                          <MathText text={String(t.question ?? "")} />
 
                           <div className="small" style={{ opacity: 0.85 }}>
                             <span style={{ fontWeight: 700 }}>Răspuns corect:</span>{" "}
                             {correctAnswer ? (
-                              <span>{correctAnswer}</span>
+                              <MathText inline text={correctAnswer} />
                             ) : (
                               <span style={{ opacity: 0.7 }}>
                                 (lipsește TaskKey — nu a fost salvat sau nu poate fi citit)

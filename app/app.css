@@ -78,6 +78,29 @@ button:focus-visible {
   color: var(--muted);
 }
 
+.math-text,
+.math-text-inline {
+  color: inherit;
+  font-size: inherit;
+}
+
+.math-text {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.math-text mjx-container[display="true"] {
+  margin: 0.45rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  text-align: left !important;
+}
+
+.math-text-inline mjx-container {
+  display: inline-block;
+}
+
 .page-subtitle {
   font-size: 14px;
   line-height: 1.45;

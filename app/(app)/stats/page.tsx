@@ -612,7 +612,7 @@ export default function StatsPage() {
 
                     <div className="stats-plot-panel">
                       <div className="stats-plot-head">
-                        <div className="section-title">Media cohortei</div>
+                        <div className="section-title">Media grupului</div>
                         <div className="small">
                           Elevi diferiți de tine, filtrați după tipul selectat
                         </div>
@@ -623,7 +623,7 @@ export default function StatsPage() {
                         color="#20a47d"
                         areaClassName="plot-area-cohort"
                         strokeClassName="plot-line-cohort"
-                        emptyLabel={`Nu există suficiente date de cohortă (minim ${MIN_COHORT_SAMPLE} încercări pe interval).`}
+                        emptyLabel={`Nu există suficiente date de grup (minim ${MIN_COHORT_SAMPLE} încercări pe interval).`}
                       />
                     </div>
                   </div>
@@ -635,12 +635,12 @@ export default function StatsPage() {
                     </div>
 
                     <div className="stats-kpi-pill">
-                      <span>Ultima medie cohortă</span>
+                      <span>Ultima medie a grupului</span>
                       <strong>{formatPercent(latestCohort)}</strong>
                     </div>
 
                     <div className="stats-kpi-pill">
-                      <span>Diferență față de cohortă</span>
+                      <span>Diferență față de grup</span>
                       <strong>
                         {latestGap == null
                           ? "—"
@@ -651,14 +651,14 @@ export default function StatsPage() {
                     <div className="stats-kpi-pill">
                       <span>Eșantion</span>
                       <strong>
-                        Tu: {userTotalCount} • Cohortă: {cohortTotalCount}
+                        Tu: {userTotalCount} • Grup: {cohortTotalCount}
                       </strong>
                     </div>
                   </div>
 
                   {hasSmallCohortBuckets && (
                     <div className="small" style={{ marginTop: 10 }}>
-                      Unele intervale au fost ascunse din graficul cohortei deoarece au mai puțin de {MIN_COHORT_SAMPLE} încercări.
+                      Unele intervale au fost ascunse din graficul grupului deoarece au mai puțin de {MIN_COHORT_SAMPLE} încercări.
                     </div>
                   )}
                 </>
