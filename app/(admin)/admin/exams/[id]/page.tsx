@@ -431,7 +431,7 @@ export default function AdminExamDetailPage() {
                     <div className="small" style={{ opacity: 0.78 }}>
                       Previzualizare întrebare
                     </div>
-                    <MathText text={newTask.question} />
+                    <MathText className="task-question-text" text={newTask.question} />
                   </div>
                 ) : null}
 
@@ -468,7 +468,7 @@ export default function AdminExamDetailPage() {
                             #{t.order} • {t.mark} puncte
                           </div>
 
-                          <MathText text={String(t.question ?? "")} />
+                          <MathText className="task-question-text" text={String(t.question ?? "")} />
 
                           <div className="small" style={{ opacity: 0.85 }}>
                             <span style={{ fontWeight: 700 }}>Răspuns corect:</span>{" "}

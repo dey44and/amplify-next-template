@@ -101,6 +101,15 @@ button:focus-visible {
   display: inline-block;
 }
 
+.task-question-text {
+  font-size: clamp(0.9rem, 0.88rem + 0.2vw, 0.97rem);
+  line-height: 1.45;
+}
+
+.task-question-text mjx-container[display="true"] {
+  margin: 0.35rem 0;
+}
+
 .page-subtitle {
   font-size: 14px;
   line-height: 1.45;

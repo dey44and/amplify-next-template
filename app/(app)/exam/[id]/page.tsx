@@ -426,7 +426,7 @@ export default function ExamTakePage() {
                           #{t.order} • {t.mark} puncte
                         </div>
 
-                        <MathText text={String(t.question ?? "")} />
+                        <MathText className="task-question-text" text={String(t.question ?? "")} />
 
                         <input
                           style={inputStyle}

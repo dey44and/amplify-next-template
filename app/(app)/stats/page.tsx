@@ -169,19 +169,20 @@ function TrendLinePlot({
 }) {
   const width = 560;
   const height = 220;
-  const padX = 22;
+  const padLeft = 38;
+  const padRight = 22;
   const padY = 18;
 
   if (points.length === 0) {
     return <div className="plot-empty small">{emptyLabel}</div>;
   }
 
-  const spanX = width - padX * 2;
+  const spanX = width - padLeft - padRight;
   const spanY = height - padY * 2;
   const denom = Math.max(1, points.length - 1);
 
   const coords = points.map((point, index) => {
-    const x = padX + (index / denom) * spanX;
+    const x = padLeft + (index / denom) * spanX;
     const y = padY + ((100 - point.value) / 100) * spanY;
     return { ...point, x, y };
   });
@@ -207,7 +208,7 @@ function TrendLinePlot({
           const y = padY + ((100 - tick) / 100) * spanY;
           return (
             <g key={tick}>
-              <line x1={padX} y1={y} x2={width - padX} y2={y} className="plot-grid-line" />
+              <line x1={padLeft} y1={y} x2={width - padRight} y2={y} className="plot-grid-line" />
               <text x={6} y={y + 4} className="plot-grid-label">
                 {tick}%
               </text>

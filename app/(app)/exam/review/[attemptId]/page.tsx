@@ -172,7 +172,7 @@ export default function ExamReviewPage() {
                             </div>
                           </div>
 
-                          <MathText text={question} />
+                          <MathText className="task-question-text" text={question} />
 
                           <div className="small" style={{ display: "grid", gap: 4 }}>
                             <div>
