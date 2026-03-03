@@ -152,7 +152,7 @@ export default function DashboardPage() {
         if (group.admissionType in prev) {
           next[group.admissionType] = prev[group.admissionType];
         } else {
-          next[group.admissionType] = true;
+          next[group.admissionType] = false;
           changed = true;
         }
       }
@@ -308,7 +308,7 @@ export default function DashboardPage() {
   function toggleAdmissionGroup(admissionType: string) {
     setExpandedByType((prev) => ({
       ...prev,
-      [admissionType]: !(prev[admissionType] ?? true),
+      [admissionType]: !(prev[admissionType] ?? false),
     }));
   }
 
@@ -392,7 +392,7 @@ export default function DashboardPage() {
                   </p>
                 ) : (
                   visibleDashboardExamGroups.map((group, index) => {
-                    const isExpanded = expandedByType[group.admissionType] ?? true;
+                    const isExpanded = expandedByType[group.admissionType] ?? false;
                     const panelId = `exam-group-${index}`;
                     const groupCountLabel =
                       group.exams.length === 1

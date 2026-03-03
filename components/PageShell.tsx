@@ -24,6 +24,7 @@ export function PageShell({
       ]
     : [
         { href: "/dashboard", icon: "D", label: "Panou" },
+        { href: "/archive", icon: "A", label: "Arhivă probleme" },
         { href: "/profile", icon: "P", label: "Profil" },
         { href: "/stats", icon: "S", label: "Statistici" },
       ];

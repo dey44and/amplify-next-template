@@ -78,7 +78,9 @@ export function HeaderUserActions() {
         )}
       </button>
 
-      <OutlineButton onClick={handleSignOut}>Deconectare</OutlineButton>
+      <OutlineButton className="header-signout-btn" onClick={handleSignOut}>
+        Deconectare
+      </OutlineButton>
     </div>
   );
 }

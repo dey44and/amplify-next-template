@@ -26,6 +26,21 @@ export const getAdmissionPerformanceFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const listArchiveProblemsFn = defineFunction({
+  entry: "./exam-ops/listArchiveProblems.ts",
+  resourceGroupName: "data",
+});
+
+export const recommendAdaptiveTaskFn = defineFunction({
+  entry: "./exam-ops/recommendAdaptiveTask.ts",
+  resourceGroupName: "data",
+});
+
+export const submitPracticeAnswerFn = defineFunction({
+  entry: "./exam-ops/submitPracticeAnswer.ts",
+  resourceGroupName: "data",
+});
+
 const schema = a.schema({
   UserProfile: a
     .model({
@@ -60,6 +75,9 @@ const schema = a.schema({
     order: a.integer(),
     question: a.string(),
     mark: a.float(),
+    topic: a.string(),
+    authorDifficulty: a.string(),
+    optionsCount: a.integer(),
   })
   .authorization((allow) => [
     allow.group("Admin").to(["create", "read", "update", "delete"]),
@@ -119,9 +137,55 @@ const schema = a.schema({
       allow.group("Admin").to(["read"]),
     ]),
 
-    ExamRequestStatus: a.enum(["PENDING", "APPROVED", "REJECTED"]),
+  UserTopicRating: a
+    .model({
+      owner: a.string().required(),
+      topic: a.string().required(),
+      rating: a.float(),
+      attempts: a.integer(),
+      updatedAt: a.datetime(),
+    })
+    .identifier(["owner", "topic"])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner").identityClaim("sub").to(["read"]),
+      allow.group("Admin").to(["read"]),
+    ]),
 
-    ExamRequest: a
+  TaskDifficultyRating: a
+    .model({
+      taskId: a.id().required(),
+      rating: a.float(),
+      attempts: a.integer(),
+      updatedAt: a.datetime(),
+    })
+    .identifier(["taskId"])
+    .authorization((allow) => [
+      allow.group("Admin").to(["read"]),
+    ]),
+
+  PracticeAttempt: a
+    .model({
+      owner: a.string().required(),
+      taskId: a.id().required(),
+      topic: a.string(),
+      submittedAt: a.datetime(),
+      isCorrect: a.boolean(),
+      userAnswer: a.string(),
+      expectedProb: a.float(),
+      optionsCount: a.integer(),
+      studentRatingBefore: a.float(),
+      studentRatingAfter: a.float(),
+      itemRatingBefore: a.float(),
+      itemRatingAfter: a.float(),
+    })
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner").identityClaim("sub").to(["read"]),
+      allow.group("Admin").to(["read"]),
+    ]),
+
+  ExamRequestStatus: a.enum(["PENDING", "APPROVED", "REJECTED"]),
+
+  ExamRequest: a
     .model({
       owner: a.string().required(), // Cognito sub
       examId: a.id().required(),
@@ -145,7 +209,7 @@ const schema = a.schema({
       index("examId").sortKeys(["requestedAt"]),
     ]),
 
-    ExamAccess: a
+  ExamAccess: a
     .model({
       owner: a.string().required(), // Cognito sub
       examId: a.id().required(),
@@ -191,60 +255,128 @@ const schema = a.schema({
       cohortCount: a.integer(),
     }),
 
-    AdmissionPerformance: a.customType({
-      admissionType: a.string(),
-      userTotalCount: a.integer(),
-      cohortTotalCount: a.integer(),
-      points: a.ref("PerformancePoint").array(),
-    }),
+  AdmissionPerformance: a.customType({
+    admissionType: a.string(),
+    userTotalCount: a.integer(),
+    cohortTotalCount: a.integer(),
+    points: a.ref("PerformancePoint").array(),
+  }),
 
-    // Custom query: students call this, function checks ExamAccess
-    listTasksForExam: a
+  ArchiveProblem: a.customType({
+    taskId: a.id().required(),
+    examId: a.id(),
+    examTitle: a.string(),
+    order: a.integer(),
+    question: a.string(),
+    mark: a.float(),
+    topic: a.string(),
+    optionsCount: a.integer(),
+  }),
+
+  AdaptiveRecommendation: a.customType({
+    status: a.string().required(),
+    reason: a.string(),
+    taskId: a.id(),
+    examId: a.id(),
+    examTitle: a.string(),
+    question: a.string(),
+    topic: a.string(),
+    optionsCount: a.integer(),
+    expectedCorrectProb: a.float(),
+    studentTopicRating: a.float(),
+  }),
+
+  PracticeSubmissionResult: a.customType({
+    taskId: a.id().required(),
+    topic: a.string(),
+    isCorrect: a.boolean(),
+    correctAnswer: a.string(),
+    expectedCorrectProb: a.float(),
+    studentTopicRatingBefore: a.float(),
+    studentTopicRatingAfter: a.float(),
+  }),
+
+  ExamTaskPublic: a.customType({
+    id: a.id().required(),
+    order: a.integer(),
+    question: a.string(),
+    mark: a.float(),
+  }),
+
+  // Custom query: students call this, function checks ExamAccess
+  listTasksForExam: a
     .query()
     .arguments({ examId: a.id().required() })
-    .returns(a.ref("Task").array())
+    .returns(a.ref("ExamTaskPublic").array())
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(listTasksForExamFn)),
 
-    // Custom mutation: admin approves/rejects request + grants access
-    decideExamRequest: a
-      .mutation()
-      .arguments({
-        owner: a.string().required(),
-        examId: a.id().required(),
-        status: a.ref("ExamRequestStatus"), // should be APPROVED/REJECTED
-        note: a.string(),
-      })
-      .returns(a.ref("ExamRequest"))
-      .authorization((allow) => [allow.group("Admin")])
-      .handler(a.handler.function(decideExamRequestFn)),
+  // Custom mutation: admin approves/rejects request + grants access
+  decideExamRequest: a
+    .mutation()
+    .arguments({
+      owner: a.string().required(),
+      examId: a.id().required(),
+      status: a.ref("ExamRequestStatus"), // should be APPROVED/REJECTED
+      note: a.string(),
+    })
+    .returns(a.ref("ExamRequest"))
+    .authorization((allow) => [allow.group("Admin")])
+    .handler(a.handler.function(decideExamRequestFn)),
 
-      submitExamAttempt: a
-      .mutation()
-      .arguments({
-        examId: a.id().required(),
-        answersJson: a.string().required(),
-        startedAt: a.datetime(), // optional from UI
-      })
-      .returns(a.ref("ExamAttempt"))
-      .authorization((allow) => [allow.authenticated()])
-      .handler(a.handler.function(submitExamAttemptFn)),
+  submitExamAttempt: a
+    .mutation()
+    .arguments({
+      examId: a.id().required(),
+      answersJson: a.string().required(),
+      startedAt: a.datetime(), // optional from UI
+    })
+    .returns(a.ref("ExamAttempt"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(submitExamAttemptFn)),
 
-      getExamReview: a
-      .query()
-      .arguments({ attemptId: a.id().required() })
-      .returns(a.ref("ExamReview"))
-      .authorization((allow) => [allow.authenticated()])
-      .handler(a.handler.function(getExamReviewFn)),
+  getExamReview: a
+    .query()
+    .arguments({ attemptId: a.id().required() })
+    .returns(a.ref("ExamReview"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(getExamReviewFn)),
 
-      getAdmissionPerformance: a
-      .query()
-      .arguments({
-        admissionType: a.string(),
-      })
-      .returns(a.ref("AdmissionPerformance"))
-      .authorization((allow) => [allow.authenticated()])
-      .handler(a.handler.function(getAdmissionPerformanceFn)),
+  getAdmissionPerformance: a
+    .query()
+    .arguments({
+      admissionType: a.string(),
+    })
+    .returns(a.ref("AdmissionPerformance"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(getAdmissionPerformanceFn)),
+
+  listArchiveProblems: a
+    .query()
+    .returns(a.ref("ArchiveProblem").array())
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(listArchiveProblemsFn)),
+
+  recommendAdaptiveTask: a
+    .query()
+    .arguments({
+      topic: a.string(),
+      minProb: a.float(),
+      maxProb: a.float(),
+    })
+    .returns(a.ref("AdaptiveRecommendation"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(recommendAdaptiveTaskFn)),
+
+  submitPracticeAnswer: a
+    .mutation()
+    .arguments({
+      taskId: a.id().required(),
+      answer: a.string().required(),
+    })
+    .returns(a.ref("PracticeSubmissionResult"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(submitPracticeAnswerFn)),
 })
 .authorization((allow) => [
   allow.resource(listTasksForExamFn).to(["query"]),
@@ -252,6 +384,9 @@ const schema = a.schema({
   allow.resource(submitExamAttemptFn).to(["query", "mutate"]),
   allow.resource(getExamReviewFn).to(["query"]),
   allow.resource(getAdmissionPerformanceFn).to(["query"]),
+  allow.resource(listArchiveProblemsFn).to(["query"]),
+  allow.resource(recommendAdaptiveTaskFn).to(["query"]),
+  allow.resource(submitPracticeAnswerFn).to(["query", "mutate"]),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

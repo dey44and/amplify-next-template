@@ -52,5 +52,13 @@ export const handler: Schema["listTasksForExam"]["functionHandler"] = async (eve
     .filter((task): task is NonNullable<typeof task> => !!task)
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  return tasks;
+
+  const publicTasks: Schema["ExamTaskPublic"]["type"][] = tasks.map((task) => ({
+    id: task.id,
+    order: task.order ?? null,
+    question: task.question ?? "",
+    mark: task.mark ?? null,
+  }));
+
+  return publicTasks;
 };

@@ -11,6 +11,7 @@ export function SiteHeader({ rightSlot }: { rightSlot?: React.ReactNode }) {
   const links = useMemo(
     () => [
       { label: "Panou", href: "/dashboard" },
+      { label: "Arhivă", href: "/archive" },
       { label: "Profil", href: "/profile" },
       { label: "Statistici", href: "/stats" },
     ],

@@ -62,12 +62,12 @@ export default function LoginPage() {
         <div style={{ width: "min(520px, 100%)" }}>
           {/* Brand */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ fontWeight: 780, letterSpacing: -0.5, fontSize: 32 }}>Mock Exams</div>
+            <div style={{ fontWeight: 780, letterSpacing: -0.5, fontSize: 30 }}>Mock Exams</div>
           </div>
 
           {/* Title + copy */}
           <div style={{ marginTop: 26, marginBottom: 16 }}>
-            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: -1 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -1 }}>
               Ești gata să începi{" "}
               <span>povestea ta de succes</span>?
             </div>

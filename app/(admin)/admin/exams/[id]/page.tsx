@@ -64,6 +64,9 @@ export default function AdminExamDetailPage() {
     question: "",
     mark: "",
     correctAnswer: "",
+    topic: "",
+    authorDifficulty: "MEDIUM",
+    optionsCount: "4",
   });
 
   const inputStyle: React.CSSProperties = {
@@ -190,9 +193,12 @@ export default function AdminExamDetailPage() {
     const markStr = newTask.mark.trim();
     const question = newTask.question.trim();
     const correctAnswer = newTask.correctAnswer.trim();
+    const topic = newTask.topic.trim();
+    const authorDifficulty = newTask.authorDifficulty.trim().toUpperCase();
+    const optionsCount = Number(newTask.optionsCount);
 
-    if (!orderStr || !markStr || !question || !correctAnswer) {
-      alert("Completează ordinea, punctajul, întrebarea și răspunsul corect.");
+    if (!orderStr || !markStr || !question || !correctAnswer || !topic) {
+      alert("Completează ordinea, punctajul, întrebarea, răspunsul corect și topicul.");
       return;
     }
 
@@ -207,6 +213,14 @@ export default function AdminExamDetailPage() {
       alert("Punctajul trebuie să fie un număr pozitiv.");
       return;
     }
+    if (optionsCount !== 4 && optionsCount !== 6) {
+      alert("Numărul de opțiuni trebuie să fie 4 sau 6.");
+      return;
+    }
+    if (!["EASY", "MEDIUM", "HARD"].includes(authorDifficulty)) {
+      alert("Dificultatea trebuie să fie EASY, MEDIUM sau HARD.");
+      return;
+    }
 
     setAddingTask(true);
     try {
@@ -216,6 +230,9 @@ export default function AdminExamDetailPage() {
         order,
         question,
         mark,
+        topic,
+        authorDifficulty,
+        optionsCount,
       });
 
       if (taskRes.errors?.length || !taskRes.data) {
@@ -243,7 +260,15 @@ export default function AdminExamDetailPage() {
         return;
       }
 
-      setNewTask({ order: "", question: "", mark: "", correctAnswer: "" });
+      setNewTask({
+        order: "",
+        question: "",
+        mark: "",
+        correctAnswer: "",
+        topic: "",
+        authorDifficulty: "MEDIUM",
+        optionsCount: "4",
+      });
       await refresh();
     } finally {
       setAddingTask(false);
@@ -368,7 +393,7 @@ export default function AdminExamDetailPage() {
                 <div>
                   <div className="section-title">Itemi (întrebări)</div>
                   <div className="small" style={{ marginTop: 6 }}>
-                    Adaugă întrebări cu ordine, punctaj și răspuns corect (doar admin).
+                    Adaugă întrebări cu ordine, punctaj, răspuns corect și topic.
                   </div>
                 </div>
               </div>
@@ -403,6 +428,45 @@ export default function AdminExamDetailPage() {
                     disabled={addingTask}
                     style={inputStyle}
                   />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 180px 160px",
+                    gap: 10,
+                  }}
+                >
+                  <input
+                    placeholder="Topic (ex.: Algebră)"
+                    value={newTask.topic}
+                    onChange={(e) => setNewTask({ ...newTask, topic: e.target.value })}
+                    disabled={addingTask}
+                    style={inputStyle}
+                  />
+                  <select
+                    value={newTask.authorDifficulty}
+                    onChange={(e) =>
+                      setNewTask({ ...newTask, authorDifficulty: e.target.value })
+                    }
+                    disabled={addingTask}
+                    style={inputStyle}
+                  >
+                    <option value="EASY">Dificultate: EASY</option>
+                    <option value="MEDIUM">Dificultate: MEDIUM</option>
+                    <option value="HARD">Dificultate: HARD</option>
+                  </select>
+                  <select
+                    value={newTask.optionsCount}
+                    onChange={(e) =>
+                      setNewTask({ ...newTask, optionsCount: e.target.value })
+                    }
+                    disabled={addingTask}
+                    style={inputStyle}
+                  >
+                    <option value="4">4 opțiuni</option>
+                    <option value="6">6 opțiuni</option>
+                  </select>
                 </div>
 
                 <textarea
@@ -466,6 +530,12 @@ export default function AdminExamDetailPage() {
                         >
                           <div style={{ fontWeight: 760 }}>
                             #{t.order} • {t.mark} puncte
+                          </div>
+
+                          <div className="small" style={{ opacity: 0.9 }}>
+                            Topic: {t.topic || "General"} • Dificultate:{" "}
+                            {t.authorDifficulty || "MEDIUM"} • Opțiuni:{" "}
+                            {t.optionsCount ?? 4}
                           </div>
 
                           <MathText className="task-question-text" text={String(t.question ?? "")} />

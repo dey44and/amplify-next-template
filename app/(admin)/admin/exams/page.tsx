@@ -21,6 +21,7 @@ export default function AdminExamsPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [deletingExamId, setDeletingExamId] = useState<string | null>(null);
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [form, setForm] = useState({
@@ -124,14 +125,94 @@ export default function AdminExamsPage() {
 
   async function deleteExam(id: string) {
     if (!confirm("Ștergi această simulare?")) return;
+    setDeletingExamId(id);
+    try {
+      // Remove exam children first, otherwise tasks become orphan records.
+      const tasksRes = await client.models.Task.list({
+        filter: { examId: { eq: id } },
+        limit: 2000,
+      });
+      if (tasksRes.errors?.length) {
+        console.error(tasksRes.errors);
+        alert("Nu am putut încărca itemii pentru ștergere.");
+        return;
+      }
 
-    const res = await client.models.MockExam.delete({ id });
-    if (res.errors?.length) {
-      console.error(res.errors);
-      alert("Ștergerea simulării a eșuat.");
-      return;
+      const tasks = (tasksRes.data ?? []).filter((task): task is NonNullable<typeof task> => !!task);
+      for (const task of tasks) {
+        const keyRes = await client.models.TaskKey.list({
+          filter: { taskId: { eq: task.id } },
+          limit: 20,
+        });
+        if (keyRes.errors?.length) {
+          console.error(keyRes.errors);
+          alert("Nu am putut încărca cheia unui item. Simularea nu a fost ștearsă.");
+          return;
+        }
+
+        for (const key of (keyRes.data ?? []).filter((k): k is NonNullable<typeof k> => !!k)) {
+          const delKeyRes = await client.models.TaskKey.delete({ id: key.id });
+          if (delKeyRes.errors?.length) {
+            console.error(delKeyRes.errors);
+            alert("Ștergerea cheii unui item a eșuat. Simularea nu a fost ștearsă.");
+            return;
+          }
+        }
+
+        const delTaskRes = await client.models.Task.delete({ id: task.id });
+        if (delTaskRes.errors?.length) {
+          console.error(delTaskRes.errors);
+          alert("Ștergerea unui item a eșuat. Simularea nu a fost ștearsă.");
+          return;
+        }
+      }
+
+      const accessRes = await client.models.ExamAccess.list({
+        filter: { examId: { eq: id } },
+        limit: 2000,
+      });
+      if (accessRes.errors?.length) {
+        console.error(accessRes.errors);
+        alert("Nu am putut încărca accesările pentru ștergere.");
+        return;
+      }
+      for (const row of (accessRes.data ?? []).filter((x): x is NonNullable<typeof x> => !!x)) {
+        const delAccessRes = await client.models.ExamAccess.delete({ owner: row.owner, examId: id });
+        if (delAccessRes.errors?.length) {
+          console.error(delAccessRes.errors);
+          alert("Nu am putut șterge toate accesările pentru simulare.");
+          return;
+        }
+      }
+
+      const reqRes = await client.models.ExamRequest.list({
+        filter: { examId: { eq: id } },
+        limit: 2000,
+      });
+      if (reqRes.errors?.length) {
+        console.error(reqRes.errors);
+        alert("Nu am putut încărca cererile pentru ștergere.");
+        return;
+      }
+      for (const row of (reqRes.data ?? []).filter((x): x is NonNullable<typeof x> => !!x)) {
+        const delReqRes = await client.models.ExamRequest.delete({ owner: row.owner, examId: id });
+        if (delReqRes.errors?.length) {
+          console.error(delReqRes.errors);
+          alert("Nu am putut șterge toate cererile pentru simulare.");
+          return;
+        }
+      }
+
+      const res = await client.models.MockExam.delete({ id });
+      if (res.errors?.length) {
+        console.error(res.errors);
+        alert("Ștergerea simulării a eșuat.");
+        return;
+      }
+      setExams((prev) => prev.filter((e) => e.id !== id));
+    } finally {
+      setDeletingExamId((current) => (current === id ? null : current));
     }
-    setExams((prev) => prev.filter((e) => e.id !== id));
   }
 
   return (
@@ -254,6 +335,7 @@ export default function AdminExamsPage() {
 
                       <button
                         onClick={() => deleteExam(e.id)}
+                        disabled={deletingExamId === e.id}
                         style={{
                           background: "transparent",
                           border: "none",
@@ -265,7 +347,7 @@ export default function AdminExamsPage() {
                           textDecoration: "underline",
                         }}
                       >
-                        Șterge
+                        {deletingExamId === e.id ? "Se șterge…" : "Șterge"}
                       </button>
                     </div>
                   </div>

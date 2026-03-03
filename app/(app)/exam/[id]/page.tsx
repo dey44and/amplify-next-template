@@ -19,7 +19,7 @@ import { getCurrentUser } from "aws-amplify/auth";
 const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
-type Task = Schema["Task"]["type"];
+type ExamTaskPublic = Schema["ExamTaskPublic"]["type"];
 type ExamAttempt = Schema["ExamAttempt"]["type"];
 
 function mapExamFlowError(raw?: string) {
@@ -63,7 +63,7 @@ export default function ExamTakePage() {
   const examId = useMemo(() => params.id, [params.id]);
 
   const [exam, setExam] = useState<Exam | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<ExamTaskPublic[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
   const [loading, setLoading] = useState(true);
@@ -159,7 +159,7 @@ export default function ExamTakePage() {
         return;
       }
 
-      const raw = (res.data ?? []).filter((t): t is Task => !!t);
+      const raw = (res.data ?? []).filter((t): t is ExamTaskPublic => !!t);
       const data = raw.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setTasks(data);
     } catch (e) {
