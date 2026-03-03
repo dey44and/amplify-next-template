@@ -235,10 +235,14 @@ export default function ProfilePage() {
       <PageShell>
         <div className="panel-stack">
           <div className="panel-top-row">
-            <div className="page-title-xl">
-              {existing ? "Editează profilul" : "Completează-ți profilul"}
+            <div>
+              <div className="page-title-xl">
+                {existing ? "Editează profilul" : "Completează-ți profilul"}
+              </div>
+              <div className="page-subtitle" style={{ marginTop: 6 }}>
+                Aceste informații sunt vizibile doar pentru tine.
+              </div>
             </div>
-            <div className="page-subtitle">Aceste informații sunt vizibile doar pentru tine.</div>
           </div>
 
           <Card>

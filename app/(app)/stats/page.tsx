@@ -587,7 +587,7 @@ export default function StatsPage() {
 
                   <div className="stats-compare-kpis">
                     <div className="stats-kpi-pill">
-                      <span>Ultimul tău punct</span>
+                      <span>Ultimul tău punctaj</span>
                       <strong>{formatPercent(latestUser)}</strong>
                     </div>
 
