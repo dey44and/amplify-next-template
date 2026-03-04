@@ -68,8 +68,7 @@ export default function LoginPage() {
           {/* Title + copy */}
           <div style={{ marginTop: 26, marginBottom: 16 }}>
             <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -1 }}>
-              Ești gata să începi{" "}
-              <span>povestea ta de succes</span>?
+              Ești gata să începi?
             </div>
           </div>
 
@@ -155,7 +154,7 @@ export default function LoginPage() {
 
           <div style={{ marginTop: 14 }}>
             <div style={{ fontWeight: 760, letterSpacing: -0.3 }}>
-              Exersează. Măsoară. Progresează.
+              Exersează. Progresează. Repetă
             </div>
             <div className="small" style={{ marginTop: 6, lineHeight: 1.5 }}>
               Susține simulări adaptate profilului tău de admitere și urmărește-ți progresul în timp.

@@ -53,7 +53,7 @@ declare global {
 }
 
 const MATHJAX_SCRIPT_URL =
-  "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js";
+  "https://cdn.jsdelivr.net/npm/mathjax@3/es5/startup.js";
 
 function configureMathJax() {
   if (typeof window === "undefined") return;
@@ -66,7 +66,14 @@ function configureMathJax() {
     loader: {
       ...current.loader,
       load: Array.from(
-        new Set([...(current.loader?.load ?? []), "[tex]/textmacros"])
+        new Set([
+          ...(current.loader?.load ?? []),
+          "input/tex",
+          "output/chtml",
+          "[tex]/textmacros",
+          "output/svg",
+          "ui/menu",
+        ])
       ),
     },
     tex: {

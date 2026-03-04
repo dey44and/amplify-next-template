@@ -53,6 +53,7 @@ const schema = a.schema({
     })
     .authorization((allow) => [
       allow.ownerDefinedIn("id").identityClaim("sub"),
+      allow.group("Admin").to(["read"]),
     ]),
 
   MockExam: a

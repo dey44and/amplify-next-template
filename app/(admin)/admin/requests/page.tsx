@@ -18,6 +18,7 @@ const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
 type ExamRequest = Schema["ExamRequest"]["type"];
+type Profile = Schema["UserProfile"]["type"];
 
 export default function AdminRequestsPage() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function AdminRequestsPage() {
 
   const [requests, setRequests] = useState<ExamRequest[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
+  const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
   const [noteByKey, setNoteByKey] = useState<Record<string, string>>({});
   const [workingKey, setWorkingKey] = useState<string | null>(null);
 
@@ -43,13 +45,57 @@ export default function AdminRequestsPage() {
       limit: 500,
     });
     if (reqRes.errors?.length) console.error(reqRes.errors);
-    setRequests(reqRes.data ?? []);
+    const pendingRequests = reqRes.data ?? [];
+    setRequests(pendingRequests);
 
     const examsRes = await client.models.MockExam.list({ limit: 500 });
     if (examsRes.errors?.length) console.error(examsRes.errors);
     setExams(examsRes.data ?? []);
 
+    const ownerIds = Array.from(
+      new Set(
+        pendingRequests
+          .map((r) => r.owner)
+          .filter((owner): owner is string => Boolean(owner))
+      )
+    );
+
+    if (ownerIds.length === 0) {
+      setProfilesByOwner(new Map());
+      setLoading(false);
+      return;
+    }
+
+    const profileResults = await Promise.all(
+      ownerIds.map(async (ownerId) => {
+        const res = await client.models.UserProfile.get({ id: ownerId });
+        if (res.errors?.length) {
+          console.error(`UserProfile.get failed for ${ownerId}:`, res.errors);
+        }
+        return [ownerId, res.data ?? null] as const;
+      })
+    );
+
+    const nextProfiles = new Map<string, Profile>();
+    for (const [ownerId, profile] of profileResults) {
+      if (profile) nextProfiles.set(ownerId, profile);
+    }
+    setProfilesByOwner(nextProfiles);
+
     setLoading(false);
+  }
+
+  function formatRequester(owner?: string | null) {
+    const ownerId = String(owner ?? "").trim();
+    if (!ownerId) return "—";
+
+    const profile = profilesByOwner.get(ownerId);
+    const firstName = String(profile?.firstName ?? "").trim();
+    const lastName = String(profile?.lastName ?? "").trim();
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+    if (fullName) return `${fullName} (${ownerId})`;
+    return ownerId;
   }
 
   useEffect(() => {
@@ -180,7 +226,7 @@ export default function AdminRequestsPage() {
                       </div>
 
                       <div className="small">
-                        Elev (owner sub): <span style={{ opacity: 0.85 }}>{owner ?? "—"}</span>
+                        Elev: <span style={{ opacity: 0.85 }}>{formatRequester(owner)}</span>
                       </div>
 
                       <div className="small" style={{ opacity: 0.85 }}>
