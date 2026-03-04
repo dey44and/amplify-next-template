@@ -135,7 +135,7 @@ function ensureMathJaxLoaded() {
     return window.__mathJaxLoadingPromise;
   }
 
-  window.__mathJaxLoadingPromise = new Promise<void>((resolve, reject) => {
+  const loadPromise = new Promise<void>((resolve, reject) => {
     const existingScript = document.querySelector(
       'script[data-mathjax-loader="true"]'
     ) as HTMLScriptElement | null;
@@ -157,7 +157,7 @@ function ensureMathJaxLoaded() {
       const timeoutId = window.setTimeout(() => {
         window.clearInterval(pollId);
         reject(new Error("Timed out waiting for MathJax."));
-      }, 5000);
+      }, 15000);
 
       existingScript.addEventListener(
         "load",
@@ -189,6 +189,12 @@ function ensureMathJaxLoaded() {
     document.head.appendChild(script);
   });
 
+  // If loading fails once (slow network/CDN hiccup), allow future calls to retry.
+  window.__mathJaxLoadingPromise = loadPromise.catch((err) => {
+    window.__mathJaxLoadingPromise = undefined;
+    throw err;
+  });
+
   return window.__mathJaxLoadingPromise;
 }
 
@@ -203,27 +209,42 @@ export function MathText({
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: number | null = null;
 
-    ensureMathJaxLoaded()
-      .then(() => {
-        if (cancelled) return;
-        const node = rootRef.current;
-        if (!node) return;
+    const typesetNode = async () => {
+      await ensureMathJaxLoaded();
+      if (cancelled) return;
 
-        const mathJax = window.MathJax;
-        if (typeof mathJax?.typesetPromise !== "function") return;
+      const node = rootRef.current;
+      if (!node) return;
 
-        mathJax.typesetClear?.([node]);
-        return mathJax.typesetPromise([node]).catch((err) => {
-          console.error("MathJax typeset error:", err);
+      const mathJax = window.MathJax;
+      if (typeof mathJax?.typesetPromise !== "function") {
+        throw new Error("MathJax API unavailable after script load.");
+      }
+
+      mathJax.typesetClear?.([node]);
+      await mathJax.typesetPromise([node]);
+    };
+
+    typesetNode().catch((err) => {
+      if (cancelled) return;
+      console.error("MathJax load/typeset error:", err);
+
+      // One delayed retry for transient script-load races.
+      retryTimer = window.setTimeout(() => {
+        typesetNode().catch((retryErr) => {
+          if (cancelled) return;
+          console.error("MathJax retry failed:", retryErr);
         });
-      })
-      .catch((err) => {
-        console.error("MathJax load error:", err);
-      });
+      }, 1200);
+    });
 
     return () => {
       cancelled = true;
+      if (retryTimer != null) {
+        window.clearTimeout(retryTimer);
+      }
     };
   }, [inline, text]);
 
