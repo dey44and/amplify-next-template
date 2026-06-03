@@ -18,6 +18,26 @@ const client = generateClient<Schema>();
 
 type BacSimulation = Schema["BacSimulation"]["type"];
 
+type BacSimulationForm = {
+  title: string;
+  subject: string;
+  startAt: string;
+  durationMinutes: string;
+  maxGrade: string;
+  instructions: string;
+  promptText: string;
+};
+
+const emptyForm: BacSimulationForm = {
+  title: "",
+  subject: "",
+  startAt: "",
+  durationMinutes: "",
+  maxGrade: "10",
+  instructions: "",
+  promptText: "",
+};
+
 function localDatetimeToISO(local: string) {
   const [date, time] = local.split("T");
   const [y, m, d] = date.split("-").map(Number);
@@ -26,21 +46,26 @@ function localDatetimeToISO(local: string) {
   return dt.toISOString();
 }
 
+function isoToLocalDatetime(iso?: string | null) {
+  if (!iso) return "";
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return "";
+
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`,
+    `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
+  ].join("T");
+}
+
 export default function AdminBacPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [savingSimulation, setSavingSimulation] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [simulations, setSimulations] = useState<BacSimulation[]>([]);
-  const [form, setForm] = useState({
-    title: "",
-    subject: "",
-    startAt: "",
-    durationMinutes: "",
-    maxGrade: "10",
-    instructions: "",
-    promptText: "",
-  });
+  const [form, setForm] = useState<BacSimulationForm>(emptyForm);
 
   async function refresh() {
     setLoading(true);
@@ -65,7 +90,28 @@ export default function AdminBacPage() {
     [simulations]
   );
 
-  async function createSimulation() {
+  function resetForm() {
+    setEditingId(null);
+    setForm({ ...emptyForm });
+  }
+
+  function editSimulation(simulation: BacSimulation) {
+    setEditingId(simulation.id);
+    setForm({
+      title: simulation.title ?? "",
+      subject: simulation.subject ?? "",
+      startAt: isoToLocalDatetime(simulation.startAt),
+      durationMinutes:
+        simulation.durationMinutes != null ? String(simulation.durationMinutes) : "",
+      maxGrade: simulation.maxGrade != null ? String(simulation.maxGrade) : "10",
+      instructions: simulation.instructions ?? "",
+      promptText: simulation.promptText ?? "",
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveSimulation() {
     const title = form.title.trim();
     const subject = form.subject.trim();
     const startAtLocal = form.startAt.trim();
@@ -85,9 +131,9 @@ export default function AdminBacPage() {
       return;
     }
 
-    setCreating(true);
+    setSavingSimulation(true);
     try {
-      const res = await client.models.BacSimulation.create({
+      const payload = {
         title,
         subject,
         startAt: localDatetimeToISO(startAtLocal),
@@ -95,26 +141,29 @@ export default function AdminBacPage() {
         maxGrade,
         instructions: form.instructions.trim() || null,
         promptText: form.promptText.trim() || null,
-      });
+      };
+
+      const res = editingId
+        ? await client.models.BacSimulation.update({
+            id: editingId,
+            ...payload,
+          })
+        : await client.models.BacSimulation.create(payload);
 
       if (res.errors?.length) {
         console.error(res.errors);
-        alert("Crearea simulării Bac a eșuat.");
+        alert(
+          editingId
+            ? "Actualizarea simulării Bac a eșuat."
+            : "Crearea simulării Bac a eșuat."
+        );
         return;
       }
 
-      setForm({
-        title: "",
-        subject: "",
-        startAt: "",
-        durationMinutes: "",
-        maxGrade: "10",
-        instructions: "",
-        promptText: "",
-      });
+      resetForm();
       await refresh();
     } finally {
-      setCreating(false);
+      setSavingSimulation(false);
     }
   }
 
@@ -140,14 +189,21 @@ export default function AdminBacPage() {
           </section>
 
           <Card className="bac-card">
-            <div className="section-title">Creează simulare Bac</div>
+            <div className="section-title">
+              {editingId ? "Editează simulare Bac" : "Creează simulare Bac"}
+            </div>
+            {editingId ? (
+              <div className="page-subtitle" style={{ marginTop: 6 }}>
+                Modificările se aplică simulării selectate. Lucrările deja trimise rămân atașate.
+              </div>
+            ) : null}
 
             <div style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 820 }}>
               <input
                 placeholder="Titlu"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                disabled={creating}
+                disabled={savingSimulation}
                 className="field-input"
               />
 
@@ -155,16 +211,22 @@ export default function AdminBacPage() {
                 placeholder="Materie (ex.: Matematică M1, Română)"
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                disabled={creating}
+                disabled={savingSimulation}
                 className="field-input"
               />
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 160px", gap: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 10,
+                }}
+              >
                 <input
                   type="datetime-local"
                   value={form.startAt}
                   onChange={(e) => setForm({ ...form, startAt: e.target.value })}
-                  disabled={creating}
+                  disabled={savingSimulation}
                   className="field-input"
                 />
                 <input
@@ -174,7 +236,7 @@ export default function AdminBacPage() {
                   placeholder="Durată (min)"
                   value={form.durationMinutes}
                   onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-                  disabled={creating}
+                  disabled={savingSimulation}
                   className="field-input"
                 />
                 <input
@@ -184,7 +246,7 @@ export default function AdminBacPage() {
                   placeholder="Max"
                   value={form.maxGrade}
                   onChange={(e) => setForm({ ...form, maxGrade: e.target.value })}
-                  disabled={creating}
+                  disabled={savingSimulation}
                   className="field-input"
                 />
               </div>
@@ -193,7 +255,7 @@ export default function AdminBacPage() {
                 placeholder="Instrucțiuni pentru elevi"
                 value={form.instructions}
                 onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-                disabled={creating}
+                disabled={savingSimulation}
                 className="field-input"
                 style={{ minHeight: 90, resize: "vertical" }}
               />
@@ -202,7 +264,7 @@ export default function AdminBacPage() {
                 placeholder="Subiect / cerințe (poate conține LaTeX)"
                 value={form.promptText}
                 onChange={(e) => setForm({ ...form, promptText: e.target.value })}
-                disabled={creating}
+                disabled={savingSimulation}
                 className="field-input"
                 style={{ minHeight: 130, resize: "vertical" }}
               />
@@ -216,10 +278,21 @@ export default function AdminBacPage() {
                 </div>
               ) : null}
 
-              <div>
-                <OutlineButton onClick={createSimulation} disabled={creating}>
-                  {creating ? "Se creează…" : "Creează"}
+              <div className="exam-actions">
+                <OutlineButton onClick={saveSimulation} disabled={savingSimulation}>
+                  {savingSimulation
+                    ? editingId
+                      ? "Se salvează…"
+                      : "Se creează…"
+                    : editingId
+                    ? "Salvează modificările"
+                    : "Creează"}
                 </OutlineButton>
+                {editingId ? (
+                  <OutlineButton onClick={resetForm} disabled={savingSimulation}>
+                    Anulează editarea
+                  </OutlineButton>
+                ) : null}
               </div>
             </div>
           </Card>
@@ -247,6 +320,9 @@ export default function AdminBacPage() {
                       {simulation.maxGrade ?? 10}
                     </div>
                     <div className="exam-actions">
+                      <OutlineButton onClick={() => editSimulation(simulation)}>
+                        Editează
+                      </OutlineButton>
                       <OutlineButton onClick={() => router.push(`/admin/bac/${simulation.id}`)}>
                         Evaluări
                       </OutlineButton>
