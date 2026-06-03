@@ -41,6 +41,11 @@ export const submitPracticeAnswerFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const submitBacSubmissionFn = defineFunction({
+  entry: "./exam-ops/submitBacSubmission.ts",
+  resourceGroupName: "data",
+});
+
 const schema = a.schema({
   UserProfile: a
     .model({
@@ -228,6 +233,69 @@ const schema = a.schema({
       index("examId").sortKeys(["grantedAt"]),
     ]),
 
+  BacSimulation: a
+    .model({
+      title: a.string().required(),
+      subject: a.string().required(),
+      startAt: a.datetime(),
+      durationMinutes: a.integer(),
+      maxGrade: a.float(),
+      instructions: a.string(),
+      promptText: a.string(),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(["read"]),
+      allow.group("Admin").to(["create", "read", "update", "delete"]),
+    ]),
+
+  BacSubmission: a
+    .model({
+      owner: a.string().required(), // Cognito sub
+      simulationId: a.id().required(),
+      submittedAt: a.datetime(),
+      updatedAt: a.datetime(),
+      solutionFilePath: a.string().required(),
+      solutionOriginalName: a.string(),
+      solutionContentType: a.string(),
+      solutionSizeBytes: a.integer(),
+      studentNote: a.string(),
+    })
+    .identifier(["owner", "simulationId"])
+    .authorization((allow) => [
+      // Students can read their own submission. Creation/update is forced
+      // through submitBacSubmission so the official window is checked server-side.
+      allow.ownerDefinedIn("owner").identityClaim("sub").to(["read"]),
+      allow.group("Admin").to(["read", "delete"]),
+    ])
+    .secondaryIndexes((index) => [
+      index("owner").sortKeys(["submittedAt"]),
+      index("simulationId").sortKeys(["submittedAt"]),
+    ]),
+
+  BacEvaluationStatus: a.enum(["DRAFT", "GRADED", "RETURNED"]),
+
+  BacEvaluation: a
+    .model({
+      submissionOwner: a.string().required(), // Cognito sub
+      simulationId: a.id().required(),
+      status: a.ref("BacEvaluationStatus"),
+      manualGrade: a.float(),
+      maxGrade: a.float(),
+      evaluationNotes: a.string(),
+      gradedBy: a.string(),
+      gradedAt: a.datetime(),
+      updatedAt: a.datetime(),
+    })
+    .identifier(["submissionOwner", "simulationId"])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("submissionOwner").identityClaim("sub").to(["read"]),
+      allow.group("Admin").to(["create", "read", "update", "delete"]),
+    ])
+    .secondaryIndexes((index) => [
+      index("simulationId").sortKeys(["gradedAt"]),
+      index("status").sortKeys(["gradedAt"]),
+    ]),
+
     ReviewItem: a.customType({
       taskId: a.id().required(),
       order: a.integer(),
@@ -378,6 +446,20 @@ const schema = a.schema({
     .returns(a.ref("PracticeSubmissionResult"))
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(submitPracticeAnswerFn)),
+
+  submitBacSubmission: a
+    .mutation()
+    .arguments({
+      simulationId: a.id().required(),
+      solutionFilePath: a.string().required(),
+      solutionOriginalName: a.string(),
+      solutionContentType: a.string(),
+      solutionSizeBytes: a.integer(),
+      studentNote: a.string(),
+    })
+    .returns(a.ref("BacSubmission"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(submitBacSubmissionFn)),
 })
 .authorization((allow) => [
   allow.resource(listTasksForExamFn).to(["query"]),
@@ -388,6 +470,7 @@ const schema = a.schema({
   allow.resource(listArchiveProblemsFn).to(["query"]),
   allow.resource(recommendAdaptiveTaskFn).to(["query"]),
   allow.resource(submitPracticeAnswerFn).to(["query", "mutate"]),
+  allow.resource(submitBacSubmissionFn).to(["query", "mutate"]),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

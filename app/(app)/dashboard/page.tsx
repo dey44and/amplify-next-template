@@ -332,6 +332,9 @@ export default function DashboardPage() {
                     <OutlineButton onClick={() => router.push("/admin/exams")}>
                       Simulări administrator
                     </OutlineButton>
+                    <OutlineButton onClick={() => router.push("/admin/bac")}>
+                      Bac administrator
+                    </OutlineButton>
                     <OutlineButton onClick={() => router.push("/admin/requests")}>
                       Cereri
                     </OutlineButton>

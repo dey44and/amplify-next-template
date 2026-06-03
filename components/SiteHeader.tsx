@@ -12,6 +12,7 @@ export function SiteHeader({ rightSlot }: { rightSlot?: React.ReactNode }) {
     () => [
       { label: "Panou", href: "/dashboard" },
       { label: "Arhivă", href: "/archive" },
+      { label: "Bac", href: "/bac" },
       { label: "Profil", href: "/profile" },
       { label: "Statistici", href: "/stats" },
     ],

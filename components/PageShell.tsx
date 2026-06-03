@@ -20,11 +20,13 @@ export function PageShell({
     ? [
         { href: "/dashboard", icon: "D", label: "Panou" },
         { href: "/admin/exams", icon: "E", label: "Simulări administrator" },
+        { href: "/admin/bac", icon: "B", label: "Bac administrator" },
         { href: "/admin/requests", icon: "R", label: "Cereri" },
       ]
     : [
         { href: "/dashboard", icon: "D", label: "Panou" },
         { href: "/archive", icon: "A", label: "Arhivă probleme" },
+        { href: "/bac", icon: "B", label: "Simulări Bac" },
         { href: "/profile", icon: "P", label: "Profil" },
         { href: "/stats", icon: "S", label: "Statistici" },
       ];

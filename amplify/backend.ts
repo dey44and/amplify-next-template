@@ -3,6 +3,7 @@ import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 
 import { auth } from "./auth/resource.js";
 import { data } from "./data/resource.js";
+import { storage } from "./storage/resource.js";
 
 import {
   listTasksForExamFn,
@@ -13,11 +14,13 @@ import {
   listArchiveProblemsFn,
   recommendAdaptiveTaskFn,
   submitPracticeAnswerFn,
+  submitBacSubmissionFn,
 } from "./data/resource.js";
 
 const backend = defineBackend({
   auth,
   data,
+  storage,
 
   // IMPORTANT: expose the functions as backend resources
   listTasksForExamFn,
@@ -28,6 +31,7 @@ const backend = defineBackend({
   listArchiveProblemsFn,
   recommendAdaptiveTaskFn,
   submitPracticeAnswerFn,
+  submitBacSubmissionFn,
 });
 
 // Allow these lambdas to call the Amplify Data (AppSync GraphQL) API using IAM
@@ -46,3 +50,4 @@ backend.getAdmissionPerformanceFn.resources.lambda.addToRolePolicy(allowGraphQL)
 backend.listArchiveProblemsFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.recommendAdaptiveTaskFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitPracticeAnswerFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.submitBacSubmissionFn.resources.lambda.addToRolePolicy(allowGraphQL);

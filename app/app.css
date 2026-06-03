@@ -600,6 +600,130 @@ button:focus-visible {
   box-shadow: none;
 }
 
+.bac-page {
+  --bac-blue: #1557a5;
+  --bac-navy: #1a3159;
+  --bac-red: #e84a3f;
+  --bac-yellow: #f4b718;
+  --bac-teal: #2f8f7c;
+  --bac-cream: #fff9e9;
+}
+
+.bac-hero {
+  min-height: 282px;
+  border: 1px solid color-mix(in srgb, var(--bac-blue) 22%, white 78%);
+  border-radius: 28px;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(255, 252, 239, 0.96) 38%,
+      rgba(255, 249, 232, 0.74) 62%,
+      rgba(255, 255, 255, 0.14) 100%
+    ),
+    url("/illustrations/bac-artwork-abstract.png") right center / auto 112% no-repeat,
+    linear-gradient(135deg, #fffef7 0%, #e9f3ff 52%, #fff0d5 100%);
+  box-shadow:
+    0 18px 44px rgba(31, 49, 85, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.bac-hero--compact {
+  min-height: 214px;
+  background-size: auto, auto 126%, auto;
+}
+
+.bac-hero--admin {
+  border-color: color-mix(in srgb, var(--bac-teal) 24%, white 76%);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.98) 0%,
+      rgba(247, 253, 248, 0.96) 40%,
+      rgba(246, 252, 248, 0.76) 66%,
+      rgba(255, 255, 255, 0.2) 100%
+    ),
+    url("/illustrations/bac-artwork-abstract.png") right center / auto 112% no-repeat,
+    linear-gradient(135deg, #ffffff 0%, #edf8f2 52%, #fff7df 100%);
+}
+
+.bac-hero-copy {
+  min-width: 0;
+  max-width: 520px;
+  display: grid;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.bac-kicker {
+  width: fit-content;
+  border: 1px solid rgba(232, 74, 63, 0.22);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--bac-red);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.bac-title {
+  color: var(--bac-navy);
+  font-family: var(--font-display), "Bebas Neue", sans-serif;
+  font-size: 4.2rem;
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+.bac-subtitle {
+  max-width: 480px;
+  color: #41516c;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 560;
+}
+
+.bac-hero .panel-actions {
+  align-self: flex-start;
+  position: relative;
+  z-index: 1;
+}
+
+.bac-card {
+  border-color: color-mix(in srgb, var(--bac-blue) 16%, var(--border) 84%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 252, 255, 0.94)),
+    linear-gradient(135deg, rgba(244, 183, 24, 0.08), rgba(47, 143, 124, 0.08));
+}
+
+.bac-page .exam-item {
+  border-color: color-mix(in srgb, var(--bac-blue) 14%, var(--border) 86%);
+  background:
+    linear-gradient(180deg, #ffffff, #fbfdff),
+    linear-gradient(135deg, rgba(244, 183, 24, 0.08), rgba(232, 74, 63, 0.05));
+}
+
+.bac-page .exam-item-title {
+  color: var(--bac-navy);
+}
+
+.bac-grade-card {
+  border-color: color-mix(in srgb, var(--bac-yellow) 38%, var(--border) 62%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 234, 0.94)),
+    linear-gradient(135deg, rgba(244, 183, 24, 0.14), rgba(47, 143, 124, 0.06));
+}
+
 .siteHeader {
   position: sticky;
   top: 0;
@@ -899,6 +1023,31 @@ button:focus-visible {
 
   .stats-plots-grid {
     grid-template-columns: 1fr;
+  }
+
+  .bac-hero,
+  .bac-hero--compact,
+  .bac-hero--admin {
+    min-height: 0;
+    padding: 22px 18px 230px;
+    align-items: flex-start;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(255, 252, 239, 0.95) 44%,
+        rgba(255, 255, 255, 0.12) 100%
+      ),
+      url("/illustrations/bac-artwork-abstract.png") center bottom / 118% auto no-repeat,
+      linear-gradient(135deg, #fffef7 0%, #e9f3ff 52%, #fff0d5 100%);
+  }
+
+  .bac-title {
+    font-size: 3.1rem;
+  }
+
+  .bac-hero .panel-actions {
+    margin-left: 0;
   }
 }
 
