@@ -75,9 +75,11 @@ backend.requestBacAccessFn.resources.lambda.addToRolePolicy(
 backend.decideBacRequestFn.resources.lambda.addToRolePolicy(
   new PolicyStatement({
     actions: ["ses:SendEmail"],
-    resources: [
-      "arn:aws:ses:*:*:identity/mockexams.ro",
-      "arn:aws:ses:*:*:identity/noreply@mockexams.ro",
-    ],
+    resources: ["*"],
+    conditions: {
+      StringEquals: {
+        "ses:FromAddress": "noreply@mockexams.ro",
+      },
+    },
   })
 );
