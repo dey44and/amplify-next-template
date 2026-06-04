@@ -1,35 +1,107 @@
 import type { Schema } from "../resource";
 
+import {
+  AdminGetUserCommand,
+  CognitoIdentityProviderClient,
+  ListUsersCommand,
+  type AttributeType,
+} from "@aws-sdk/client-cognito-identity-provider";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 
 import { getDataClientEnv } from "./_env";
-import { getIdentityEmail, getIdentitySub } from "./_shared";
+import { getIdentityEmail, getIdentitySub, getIdentityUsername } from "./_shared";
 
 const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(getDataClientEnv());
 Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
+const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
+
+function getAttribute(attributes: AttributeType[] | undefined, name: string) {
+  return attributes?.find((attribute) => attribute.Name === name)?.Value?.trim() || undefined;
+}
+
+function escapeCognitoFilterValue(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function getUserPoolEmail(args: {
+  userPoolId?: string;
+  username?: string;
+  sub: string;
+}) {
+  const { userPoolId, username, sub } = args;
+  if (!userPoolId) return undefined;
+
+  if (username) {
+    try {
+      const res = await cognito.send(
+        new AdminGetUserCommand({
+          UserPoolId: userPoolId,
+          Username: username,
+        })
+      );
+      const email = getAttribute(res.UserAttributes, "email");
+      if (email) return email;
+    } catch (error) {
+      console.warn("AdminGetUser email lookup failed:", error);
+    }
+  }
+
+  try {
+    const res = await cognito.send(
+      new ListUsersCommand({
+        UserPoolId: userPoolId,
+        Filter: `sub = "${escapeCognitoFilterValue(sub)}"`,
+        Limit: 1,
+      })
+    );
+    return getAttribute(res.Users?.[0]?.Attributes, "email");
+  } catch (error) {
+    console.warn("ListUsers email lookup failed:", error);
+    return undefined;
+  }
+}
 
 export const handler: Schema["requestBacAccess"]["functionHandler"] = async (event) => {
   const owner = getIdentitySub(event);
-  const requesterEmail = getIdentityEmail(event);
+  const requesterEmail =
+    getIdentityEmail(event) ??
+    (await getUserPoolEmail({
+      userPoolId: process.env.AUTH_USER_POOL_ID,
+      username: getIdentityUsername(event),
+      sub: owner,
+    }));
   const { simulationId } = event.arguments;
 
   if (!simulationId) throw new Error("BAC_SIMULATION_REQUIRED");
-  if (!requesterEmail) throw new Error("BAC_EMAIL_REQUIRED");
 
   const simulationRes = await client.models.BacSimulation.get({ id: simulationId });
   if (!simulationRes.data) throw new Error("BAC_SIMULATION_NOT_FOUND");
 
   const existingRes = await client.models.BacRequest.get({ owner, simulationId });
-  if (existingRes.data) return existingRes.data;
+  if (existingRes.data) {
+    if (requesterEmail && !existingRes.data.requesterEmail) {
+      const updateRes = await client.models.BacRequest.update({
+        owner,
+        simulationId,
+        requesterEmail,
+      });
+      return updateRes.data ?? existingRes.data;
+    }
+    return existingRes.data;
+  }
+
+  if (!requesterEmail) {
+    console.warn("Bac request created without requester email.", { owner, simulationId });
+  }
 
   const nowIso = new Date().toISOString();
   const createRes = await client.models.BacRequest.create({
     owner,
     simulationId,
-    requesterEmail,
+    requesterEmail: requesterEmail ?? null,
     subject: simulationRes.data.subject ?? null,
     status: "PENDING",
     requestedAt: nowIso,

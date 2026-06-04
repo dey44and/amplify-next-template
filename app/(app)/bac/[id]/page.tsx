@@ -38,6 +38,9 @@ function mapBacSubmitError(raw?: string) {
   if (msg.includes("BAC_NOT_STARTED")) return "Simularea nu a început încă.";
   if (msg.includes("BAC_ENDED")) return "Intervalul de trimitere s-a încheiat.";
   if (msg.includes("BAC_ACCESS_REQUIRED")) return "Participarea trebuie aprobată înainte.";
+  if (msg.includes("BAC_EMAIL_REQUIRED")) {
+    return "Nu am putut identifica emailul contului. Reautentifică-te și încearcă din nou.";
+  }
   if (msg.includes("BAC_ALREADY_GRADED")) return "Lucrarea a fost deja evaluată.";
   if (msg.includes("BAC_INVALID_FILE_SIZE")) return "Fișierul trebuie să fie între 1B și 25MB.";
   if (msg.includes("BAC_INVALID_WINDOW")) {

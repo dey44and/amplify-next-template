@@ -72,7 +72,7 @@ async function sendApprovalEmail(args: {
   const safeNote = args.note ? escapeHtml(args.note) : "";
   const safeUrl = escapeHtml(url);
 
-  const subject = `Confirmare participare Bac - ${args.title}`;
+  const subject = `Confirmare participare la simularea de bacalaureat - ${args.title}`;
   const details = [
     `Titlu: ${args.title}`,
     `Materie: ${args.subject ?? "-"}`,
@@ -83,31 +83,64 @@ async function sendApprovalEmail(args: {
   ].filter(Boolean);
 
   const textBody = [
+    "Mock Exams",
+    "",
     "Salut,",
     "",
-    "Cererea ta de participare la simularea Bac a fost aprobată.",
+    "Cererea ta de participare la simularea de bacalaureat a fost aprobată.",
     "",
     ...details,
     "",
     "Subiectul va fi disponibil în platformă conform programării.",
     "",
-    "Echipa MockExams",
+    "Echipa Mock Exams",
+    "",
+    "© Mock Exams 2026",
   ].join("\n");
 
   const htmlBody = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #17202a;">
-      <p>Salut,</p>
-      <p>Cererea ta de participare la simularea Bac a fost aprobată.</p>
-      <ul>
-        <li><strong>Titlu:</strong> ${safeTitle}</li>
-        <li><strong>Materie:</strong> ${safeSubject}</li>
-        <li><strong>Începe:</strong> ${safeStart}</li>
-        <li><strong>Durată:</strong> ${safeDuration} minute</li>
-        ${safeNote ? `<li><strong>Notă administrator:</strong> ${safeNote}</li>` : ""}
-      </ul>
-      <p><a href="${safeUrl}">Deschide simularea Bac</a></p>
-      <p>Subiectul va fi disponibil în platformă conform programării.</p>
-      <p>Echipa MockExams</p>
+    <div style="margin:0;padding:0;background:#f5f7fb;">
+      <div style="max-width:640px;margin:0 auto;padding:32px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#17202a;line-height:1.55;">
+        <div style="background:#ffffff;border:1px solid #e5e9f2;border-radius:18px;overflow:hidden;">
+          <div style="padding:28px 30px 18px;text-align:center;border-bottom:1px solid #eef1f6;">
+            <div style="font-size:28px;font-weight:800;letter-spacing:-0.4px;color:#13233a;">Mock Exams</div>
+            <div style="margin-top:6px;font-size:13px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#5b6b82;">Confirmare participare</div>
+          </div>
+
+          <div style="padding:28px 30px 8px;">
+            <p style="margin:0 0 16px;font-size:16px;">Salut,</p>
+            <p style="margin:0 0 22px;font-size:16px;">
+              Cererea ta de participare la simularea de bacalaureat a fost aprobată.
+            </p>
+
+            <div style="margin:0 0 24px;border:1px solid #e7ebf3;border-radius:14px;overflow:hidden;">
+              <div style="padding:13px 16px;background:#f8fafc;font-size:13px;font-weight:800;color:#334155;">Detalii simulare</div>
+              <div style="padding:14px 16px;">
+                <div style="margin-bottom:10px;font-size:15px;"><strong>Titlu:</strong> ${safeTitle}</div>
+                <div style="margin-bottom:10px;font-size:15px;"><strong>Materie:</strong> ${safeSubject}</div>
+                <div style="margin-bottom:10px;font-size:15px;"><strong>Începe:</strong> ${safeStart}</div>
+                <div style="font-size:15px;"><strong>Durată:</strong> ${safeDuration} minute</div>
+                ${safeNote ? `<div style="margin-top:10px;font-size:15px;"><strong>Notă administrator:</strong> ${safeNote}</div>` : ""}
+              </div>
+            </div>
+
+            <div style="text-align:center;margin:26px 0 24px;">
+              <a href="${safeUrl}" style="display:inline-block;background:#13233a;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:12px 18px;border-radius:12px;">
+                Deschide simularea de bacalaureat
+              </a>
+            </div>
+
+            <p style="margin:0 0 22px;font-size:14px;color:#526173;">
+              Subiectul va fi disponibil în platformă conform programării.
+            </p>
+          </div>
+
+          <div style="padding:22px 30px 26px;text-align:center;border-top:1px solid #eef1f6;">
+            <div style="font-size:16px;font-weight:800;color:#13233a;">Mock Exams</div>
+            <div style="margin-top:8px;font-size:12px;color:#7a8798;">&copy; Mock Exams 2026</div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
