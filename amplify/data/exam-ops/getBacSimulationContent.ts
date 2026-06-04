@@ -11,7 +11,7 @@ const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(getD
 Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
 
-export const handler: Schema["getBacSimulationContent"]["functionHandler"] = async (event) => {
+export const handler: Schema["getAuthorizedBacSimulationContent"]["functionHandler"] = async (event) => {
   const owner = getIdentitySub(event);
   const { simulationId } = event.arguments;
 

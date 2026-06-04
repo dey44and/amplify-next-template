@@ -102,7 +102,9 @@ export default function BacSimulationPage() {
     setContent(null);
     setContentError(null);
     if (accessRes.data) {
-      const contentRes = await client.queries.getBacSimulationContent({ simulationId });
+      const contentRes = await client.queries.getAuthorizedBacSimulationContent({
+        simulationId,
+      });
       if (contentRes.errors?.length) {
         console.error(contentRes.errors);
         setContentError(mapBacSubmitError(contentRes.errors[0]?.message));

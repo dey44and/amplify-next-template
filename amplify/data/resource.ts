@@ -549,7 +549,7 @@ const schema = a.schema({
     .authorization((allow) => [allow.group("Admin")])
     .handler(a.handler.function(decideBacRequestFn)),
 
-  getBacSimulationContent: a
+  getAuthorizedBacSimulationContent: a
     .query()
     .arguments({ simulationId: a.id().required() })
     .returns(a.ref("BacSimulationContentView"))
