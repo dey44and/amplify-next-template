@@ -13,10 +13,12 @@ import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
+import { remove } from "aws-amplify/storage";
 
 const client = generateClient<Schema>();
 
 type BacSimulation = Schema["BacSimulation"]["type"];
+type BacSimulationContent = Schema["BacSimulationContent"]["type"];
 
 type BacSimulationForm = {
   title: string;
@@ -63,6 +65,8 @@ export default function AdminBacPage() {
 
   const [loading, setLoading] = useState(true);
   const [savingSimulation, setSavingSimulation] = useState(false);
+  const [loadingContentForEdit, setLoadingContentForEdit] = useState(false);
+  const [deletingSimulationId, setDeletingSimulationId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [simulations, setSimulations] = useState<BacSimulation[]>([]);
   const [form, setForm] = useState<BacSimulationForm>(emptyForm);
@@ -95,7 +99,8 @@ export default function AdminBacPage() {
     setForm({ ...emptyForm });
   }
 
-  function editSimulation(simulation: BacSimulation) {
+  async function editSimulation(simulation: BacSimulation) {
+    setLoadingContentForEdit(true);
     setEditingId(simulation.id);
     setForm({
       title: simulation.title ?? "",
@@ -104,11 +109,26 @@ export default function AdminBacPage() {
       durationMinutes:
         simulation.durationMinutes != null ? String(simulation.durationMinutes) : "",
       maxGrade: simulation.maxGrade != null ? String(simulation.maxGrade) : "10",
-      instructions: simulation.instructions ?? "",
-      promptText: simulation.promptText ?? "",
+      instructions: "",
+      promptText: "",
     });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
+
+    try {
+      const contentRes = await client.models.BacSimulationContent.get({
+        simulationId: simulation.id,
+      });
+      if (contentRes.errors?.length) console.error(contentRes.errors);
+      const content = contentRes.data as BacSimulationContent | null;
+      setForm((current) => ({
+        ...current,
+        instructions: content?.instructions ?? "",
+        promptText: content?.promptText ?? "",
+      }));
+    } finally {
+      setLoadingContentForEdit(false);
+    }
   }
 
   async function saveSimulation() {
@@ -139,8 +159,6 @@ export default function AdminBacPage() {
         startAt: localDatetimeToISO(startAtLocal),
         durationMinutes: duration,
         maxGrade,
-        instructions: form.instructions.trim() || null,
-        promptText: form.promptText.trim() || null,
       };
 
       const res = editingId
@@ -160,10 +178,166 @@ export default function AdminBacPage() {
         return;
       }
 
+      const simulationId = editingId ?? res.data?.id;
+      if (!simulationId) {
+        alert("Simularea a fost salvată, dar conținutul nu a putut fi asociat.");
+        return;
+      }
+
+      const contentPayload = {
+        simulationId,
+        instructions: form.instructions.trim() || null,
+        promptText: form.promptText.trim() || null,
+      };
+      const existingContent = await client.models.BacSimulationContent.get({ simulationId });
+      const contentRes = existingContent.data
+        ? await client.models.BacSimulationContent.update(contentPayload)
+        : await client.models.BacSimulationContent.create(contentPayload);
+
+      if (contentRes.errors?.length) {
+        console.error(contentRes.errors);
+        alert("Simularea a fost salvată, dar salvarea subiectului a eșuat.");
+        return;
+      }
+
       resetForm();
       await refresh();
     } finally {
       setSavingSimulation(false);
+    }
+  }
+
+  async function deleteSimulation(simulation: BacSimulation) {
+    const id = simulation.id;
+    if (
+      !confirm(
+        "Ștergi această simulare Bac? Vor fi șterse și cererile, accesările, lucrările încărcate și evaluările asociate."
+      )
+    ) {
+      return;
+    }
+
+    setDeletingSimulationId(id);
+    try {
+      const contentRes = await client.models.BacSimulationContent.get({ simulationId: id });
+      if (contentRes.errors?.length) {
+        console.error(contentRes.errors);
+        alert("Nu am putut verifica subiectul pentru ștergere.");
+        return;
+      }
+      if (contentRes.data) {
+        const deleteContentRes = await client.models.BacSimulationContent.delete({
+          simulationId: id,
+        });
+        if (deleteContentRes.errors?.length) {
+          console.error(deleteContentRes.errors);
+          alert("Ștergerea subiectului Bac a eșuat.");
+          return;
+        }
+      }
+
+      const requestRes = await client.models.BacRequest.list({
+        filter: { simulationId: { eq: id } },
+        limit: 2000,
+      });
+      if (requestRes.errors?.length) {
+        console.error(requestRes.errors);
+        alert("Nu am putut încărca cererile Bac pentru ștergere.");
+        return;
+      }
+      for (const row of (requestRes.data ?? []).filter(notNull)) {
+        const deleteRequestRes = await client.models.BacRequest.delete({
+          owner: row.owner,
+          simulationId: id,
+        });
+        if (deleteRequestRes.errors?.length) {
+          console.error(deleteRequestRes.errors);
+          alert("Nu am putut șterge toate cererile Bac.");
+          return;
+        }
+      }
+
+      const accessRes = await client.models.BacAccess.list({
+        filter: { simulationId: { eq: id } },
+        limit: 2000,
+      });
+      if (accessRes.errors?.length) {
+        console.error(accessRes.errors);
+        alert("Nu am putut încărca accesările Bac pentru ștergere.");
+        return;
+      }
+      for (const row of (accessRes.data ?? []).filter(notNull)) {
+        const deleteAccessRes = await client.models.BacAccess.delete({
+          owner: row.owner,
+          simulationId: id,
+        });
+        if (deleteAccessRes.errors?.length) {
+          console.error(deleteAccessRes.errors);
+          alert("Nu am putut șterge toate accesările Bac.");
+          return;
+        }
+      }
+
+      const evaluationRes = await client.models.BacEvaluation.list({
+        filter: { simulationId: { eq: id } },
+        limit: 2000,
+      });
+      if (evaluationRes.errors?.length) {
+        console.error(evaluationRes.errors);
+        alert("Nu am putut încărca evaluările Bac pentru ștergere.");
+        return;
+      }
+      for (const row of (evaluationRes.data ?? []).filter(notNull)) {
+        const deleteEvaluationRes = await client.models.BacEvaluation.delete({
+          submissionOwner: row.submissionOwner,
+          simulationId: id,
+        });
+        if (deleteEvaluationRes.errors?.length) {
+          console.error(deleteEvaluationRes.errors);
+          alert("Nu am putut șterge toate evaluările Bac.");
+          return;
+        }
+      }
+
+      const submissionRes = await client.models.BacSubmission.list({
+        filter: { simulationId: { eq: id } },
+        limit: 2000,
+      });
+      if (submissionRes.errors?.length) {
+        console.error(submissionRes.errors);
+        alert("Nu am putut încărca lucrările Bac pentru ștergere.");
+        return;
+      }
+      for (const row of (submissionRes.data ?? []).filter(notNull)) {
+        if (row.solutionFilePath) {
+          await remove({ path: row.solutionFilePath });
+        }
+
+        const deleteSubmissionRes = await client.models.BacSubmission.delete({
+          owner: row.owner,
+          simulationId: id,
+        });
+        if (deleteSubmissionRes.errors?.length) {
+          console.error(deleteSubmissionRes.errors);
+          alert("Nu am putut șterge toate lucrările Bac.");
+          return;
+        }
+      }
+
+      const deleteSimulationRes = await client.models.BacSimulation.delete({ id });
+      if (deleteSimulationRes.errors?.length) {
+        console.error(deleteSimulationRes.errors);
+        alert("Ștergerea simulării Bac a eșuat.");
+        return;
+      }
+
+      if (editingId === id) resetForm();
+      setSimulations((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error(error);
+      alert("Ștergerea simulării Bac a eșuat.");
+    } finally {
+      setDeletingSimulationId((current) => (current === id ? null : current));
     }
   }
 
@@ -195,6 +369,7 @@ export default function AdminBacPage() {
             {editingId ? (
               <div className="page-subtitle" style={{ marginTop: 6 }}>
                 Modificările se aplică simulării selectate. Lucrările deja trimise rămân atașate.
+                {loadingContentForEdit ? " Se încarcă subiectul…" : ""}
               </div>
             ) : null}
 
@@ -321,11 +496,29 @@ export default function AdminBacPage() {
                     </div>
                     <div className="exam-actions">
                       <OutlineButton onClick={() => editSimulation(simulation)}>
-                        Editează
+                        {loadingContentForEdit && editingId === simulation.id
+                          ? "Se încarcă…"
+                          : "Editează"}
                       </OutlineButton>
                       <OutlineButton onClick={() => router.push(`/admin/bac/${simulation.id}`)}>
                         Evaluări
                       </OutlineButton>
+                      <button
+                        onClick={() => deleteSimulation(simulation)}
+                        disabled={deletingSimulationId === simulation.id}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          padding: "10px 0",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "rgba(0,0,0,0.55)",
+                          textDecoration: "underline",
+                        }}
+                      >
+                        {deletingSimulationId === simulation.id ? "Se șterge…" : "Șterge"}
+                      </button>
                     </div>
                   </div>
                 ))

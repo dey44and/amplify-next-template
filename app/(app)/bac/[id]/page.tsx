@@ -19,6 +19,9 @@ import { getUrl, uploadData } from "aws-amplify/storage";
 const client = generateClient<Schema>();
 
 type BacSimulation = Schema["BacSimulation"]["type"];
+type BacSimulationContentView = Schema["BacSimulationContentView"]["type"];
+type BacRequest = Schema["BacRequest"]["type"];
+type BacAccess = Schema["BacAccess"]["type"];
 type BacSubmission = Schema["BacSubmission"]["type"];
 type BacEvaluation = Schema["BacEvaluation"]["type"];
 
@@ -34,6 +37,7 @@ function mapBacSubmitError(raw?: string) {
   const msg = String(raw ?? "");
   if (msg.includes("BAC_NOT_STARTED")) return "Simularea nu a început încă.";
   if (msg.includes("BAC_ENDED")) return "Intervalul de trimitere s-a încheiat.";
+  if (msg.includes("BAC_ACCESS_REQUIRED")) return "Participarea trebuie aprobată înainte.";
   if (msg.includes("BAC_ALREADY_GRADED")) return "Lucrarea a fost deja evaluată.";
   if (msg.includes("BAC_INVALID_FILE_SIZE")) return "Fișierul trebuie să fie între 1B și 25MB.";
   if (msg.includes("BAC_INVALID_WINDOW")) {
@@ -49,10 +53,15 @@ export default function BacSimulationPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [simulation, setSimulation] = useState<BacSimulation | null>(null);
+  const [content, setContent] = useState<BacSimulationContentView | null>(null);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [request, setRequest] = useState<BacRequest | null>(null);
+  const [access, setAccess] = useState<BacAccess | null>(null);
   const [submission, setSubmission] = useState<BacSubmission | null>(null);
   const [evaluation, setEvaluation] = useState<BacEvaluation | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [requesting, setRequesting] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [studentNote, setStudentNote] = useState("");
@@ -66,8 +75,11 @@ export default function BacSimulationPage() {
   }, []);
 
   async function refresh(currentUserId: string) {
-    const [simulationRes, submissionRes, evaluationRes] = await Promise.all([
+    const [simulationRes, requestRes, accessRes, submissionRes, evaluationRes] =
+      await Promise.all([
       client.models.BacSimulation.get({ id: simulationId }),
+      client.models.BacRequest.get({ owner: currentUserId, simulationId }),
+      client.models.BacAccess.get({ owner: currentUserId, simulationId }),
       client.models.BacSubmission.get({ owner: currentUserId, simulationId }),
       client.models.BacEvaluation.get({
         submissionOwner: currentUserId,
@@ -76,12 +88,28 @@ export default function BacSimulationPage() {
     ]);
 
     if (simulationRes.errors?.length) console.error(simulationRes.errors);
+    if (requestRes.errors?.length) console.error(requestRes.errors);
+    if (accessRes.errors?.length) console.error(accessRes.errors);
     if (submissionRes.errors?.length) console.error(submissionRes.errors);
     if (evaluationRes.errors?.length) console.error(evaluationRes.errors);
 
     setSimulation(simulationRes.data ?? null);
+    setRequest(requestRes.data ?? null);
+    setAccess(accessRes.data ?? null);
     setSubmission(submissionRes.data ?? null);
     setEvaluation(evaluationRes.data ?? null);
+
+    setContent(null);
+    setContentError(null);
+    if (accessRes.data) {
+      const contentRes = await client.queries.getBacSimulationContent({ simulationId });
+      if (contentRes.errors?.length) {
+        console.error(contentRes.errors);
+        setContentError(mapBacSubmitError(contentRes.errors[0]?.message));
+      } else {
+        setContent(contentRes.data ?? null);
+      }
+    }
   }
 
   useEffect(() => {
@@ -125,6 +153,40 @@ export default function BacSimulationPage() {
       : false;
   const isAfter = Number.isFinite(endMs) ? nowMs > endMs + SUBMIT_GRACE_MS : false;
   const isGraded = evaluation?.status === "GRADED";
+  const hasAccess = Boolean(access);
+
+  async function requestParticipation() {
+    if (!simulation || !userId) return;
+
+    setRequesting(true);
+    try {
+      const res = await client.mutations.requestBacAccess({ simulationId: simulation.id });
+      if (res.errors?.length || !res.data) {
+        console.error(res.errors);
+        alert("Solicitarea participării a eșuat.");
+        return;
+      }
+      await refresh(userId);
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  async function deleteRequest() {
+    if (!request?.owner || !request.simulationId || !userId) return;
+    if (!confirm("Ștergi această cerere de participare?")) return;
+
+    const res = await client.models.BacRequest.delete({
+      owner: request.owner,
+      simulationId: request.simulationId,
+    });
+    if (res.errors?.length) {
+      console.error(res.errors);
+      alert("Ștergerea cererii a eșuat.");
+      return;
+    }
+    await refresh(userId);
+  }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -268,21 +330,58 @@ export default function BacSimulationPage() {
                 {simulation.maxGrade ?? 10}
               </div>
 
-              {simulation.instructions ? (
-                <div className="small" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
-                  {simulation.instructions}
+              {!hasAccess ? (
+                <div className="exam-item" style={{ marginTop: 14 }}>
+                  <div className="exam-item-title">Participare pe bază de cerere</div>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    Subiectul și încărcarea soluției devin disponibile doar după aprobarea
+                    participării de către un administrator.
+                  </div>
+                  {request ? (
+                    <div className="small" style={{ marginTop: 8 }}>
+                      Status cerere: {request.status ?? "PENDING"}
+                      {request.note ? ` • Notă: ${request.note}` : ""}
+                    </div>
+                  ) : null}
+                  <div className="exam-actions" style={{ marginTop: 10 }}>
+                    {request?.status === "PENDING" ? (
+                      <>
+                        <OutlineButton disabled>În așteptare</OutlineButton>
+                        <OutlineButton onClick={deleteRequest}>Anulează</OutlineButton>
+                      </>
+                    ) : request?.status === "REJECTED" ? (
+                      <OutlineButton disabled>Cerere respinsă</OutlineButton>
+                    ) : (
+                      <OutlineButton onClick={requestParticipation} disabled={requesting}>
+                        {requesting ? "Se trimite…" : "Solicită participare"}
+                      </OutlineButton>
+                    )}
+                  </div>
                 </div>
               ) : null}
 
-              {simulation.promptText ? (
+              {hasAccess && contentError ? (
+                <div className="small" style={{ marginTop: 12 }}>
+                  {contentError}
+                </div>
+              ) : null}
+
+              {hasAccess && content?.instructions ? (
+                <div className="small" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+                  {content.instructions}
+                </div>
+              ) : null}
+
+              {hasAccess && content?.promptText ? (
                 <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
                   <div className="section-title">Subiect</div>
-                  <MathText className="task-question-text" text={simulation.promptText} />
+                  <MathText className="task-question-text" text={content.promptText} />
                 </div>
               ) : null}
             </Card>
 
-            <Card className="bac-card">
+            {hasAccess ? (
+              <Card className="bac-card">
               <div className="section-title">Soluția ta</div>
               <div className="small" style={{ marginTop: 8 }}>
                 {isBefore
@@ -367,8 +466,9 @@ export default function BacSimulationPage() {
                 </div>
               ) : null}
             </Card>
+            ) : null}
 
-            {evaluation ? (
+            {hasAccess && evaluation ? (
               <Card className="bac-card bac-grade-card">
                 <div className="section-title">Evaluare</div>
                 <div className="small" style={{ marginTop: 8 }}>

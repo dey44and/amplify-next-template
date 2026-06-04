@@ -53,6 +53,16 @@ export function getIdentitySub(event: IdentityEvent): string {
   return sub;
 }
 
+export function getIdentityEmail(event: IdentityEvent): string | undefined {
+  const identity = getIdentityRecord(event);
+  const email =
+    asString(identity?.email) ??
+    asString(getClaim(identity, "email")) ??
+    asString(getClaim(identity, "cognito:email"));
+
+  return email?.trim() || undefined;
+}
+
 export function isAdminEvent(event: IdentityEvent) {
   const identity = getIdentityRecord(event);
   const groups = identity?.groups ?? getClaim(identity, "cognito:groups");

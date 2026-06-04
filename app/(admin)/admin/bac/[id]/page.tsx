@@ -19,6 +19,7 @@ import { getUrl } from "aws-amplify/storage";
 const client = generateClient<Schema>();
 
 type BacSimulation = Schema["BacSimulation"]["type"];
+type BacSimulationContent = Schema["BacSimulationContent"]["type"];
 type BacSubmission = Schema["BacSubmission"]["type"];
 type BacEvaluation = Schema["BacEvaluation"]["type"];
 type Profile = Schema["UserProfile"]["type"];
@@ -53,6 +54,7 @@ export default function AdminBacDetailPage() {
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [simulation, setSimulation] = useState<BacSimulation | null>(null);
+  const [simulationContent, setSimulationContent] = useState<BacSimulationContent | null>(null);
   const [submissions, setSubmissions] = useState<BacSubmission[]>([]);
   const [evaluations, setEvaluations] = useState<BacEvaluation[]>([]);
   const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
@@ -69,8 +71,9 @@ export default function AdminBacDetailPage() {
       setAdminUserId(currentAdminId);
     }
 
-    const [simulationRes, submissionsRes, evaluationsRes] = await Promise.all([
+    const [simulationRes, contentRes, submissionsRes, evaluationsRes] = await Promise.all([
       client.models.BacSimulation.get({ id: simulationId }),
+      client.models.BacSimulationContent.get({ simulationId }),
       client.models.BacSubmission.list({
         filter: { simulationId: { eq: simulationId } },
         limit: 1000,
@@ -82,14 +85,17 @@ export default function AdminBacDetailPage() {
     ]);
 
     if (simulationRes.errors?.length) console.error(simulationRes.errors);
+    if (contentRes.errors?.length) console.error(contentRes.errors);
     if (submissionsRes.errors?.length) console.error(submissionsRes.errors);
     if (evaluationsRes.errors?.length) console.error(evaluationsRes.errors);
 
     const nextSimulation = simulationRes.data ?? null;
+    const nextSimulationContent = contentRes.data ?? null;
     const nextSubmissions = (submissionsRes.data ?? []).filter(notNull);
     const nextEvaluations = (evaluationsRes.data ?? []).filter(notNull);
 
     setSimulation(nextSimulation);
+    setSimulationContent(nextSimulationContent);
     setSubmissions(nextSubmissions);
     setEvaluations(nextEvaluations);
 
@@ -302,9 +308,15 @@ export default function AdminBacDetailPage() {
                 {simulation.durationMinutes ?? "—"} min • Max: {simulation.maxGrade ?? 10}
               </div>
 
-              {simulation.promptText ? (
+              {simulationContent?.instructions ? (
+                <div className="small" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
+                  {simulationContent.instructions}
+                </div>
+              ) : null}
+
+              {simulationContent?.promptText ? (
                 <div style={{ marginTop: 14 }}>
-                  <MathText className="task-question-text" text={simulation.promptText} />
+                  <MathText className="task-question-text" text={simulationContent.promptText} />
                 </div>
               ) : null}
             </Card>

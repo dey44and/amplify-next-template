@@ -14,6 +14,9 @@ import {
   listArchiveProblemsFn,
   recommendAdaptiveTaskFn,
   submitPracticeAnswerFn,
+  requestBacAccessFn,
+  decideBacRequestFn,
+  getBacSimulationContentFn,
   submitBacSubmissionFn,
 } from "./data/resource.js";
 
@@ -31,6 +34,9 @@ const backend = defineBackend({
   listArchiveProblemsFn,
   recommendAdaptiveTaskFn,
   submitPracticeAnswerFn,
+  requestBacAccessFn,
+  decideBacRequestFn,
+  getBacSimulationContentFn,
   submitBacSubmissionFn,
 });
 
@@ -50,4 +56,17 @@ backend.getAdmissionPerformanceFn.resources.lambda.addToRolePolicy(allowGraphQL)
 backend.listArchiveProblemsFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.recommendAdaptiveTaskFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitPracticeAnswerFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.requestBacAccessFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.decideBacRequestFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.getBacSimulationContentFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitBacSubmissionFn.resources.lambda.addToRolePolicy(allowGraphQL);
+
+backend.decideBacRequestFn.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["ses:SendEmail"],
+    resources: [
+      "arn:aws:ses:*:*:identity/mockexams.ro",
+      "arn:aws:ses:*:*:identity/noreply@mockexams.ro",
+    ],
+  })
+);

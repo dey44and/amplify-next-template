@@ -41,6 +41,25 @@ export const submitPracticeAnswerFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const requestBacAccessFn = defineFunction({
+  entry: "./exam-ops/requestBacAccess.ts",
+  resourceGroupName: "data",
+});
+
+export const decideBacRequestFn = defineFunction({
+  entry: "./exam-ops/decideBacRequest.ts",
+  resourceGroupName: "data",
+  environment: {
+    APP_BASE_URL: "https://mockexams.ro",
+    SES_FROM_EMAIL: "noreply@mockexams.ro",
+  },
+});
+
+export const getBacSimulationContentFn = defineFunction({
+  entry: "./exam-ops/getBacSimulationContent.ts",
+  resourceGroupName: "data",
+});
+
 export const submitBacSubmissionFn = defineFunction({
   entry: "./exam-ops/submitBacSubmission.ts",
   resourceGroupName: "data",
@@ -240,12 +259,68 @@ const schema = a.schema({
       startAt: a.datetime(),
       durationMinutes: a.integer(),
       maxGrade: a.float(),
-      instructions: a.string(),
-      promptText: a.string(),
     })
     .authorization((allow) => [
       allow.authenticated().to(["read"]),
       allow.group("Admin").to(["create", "read", "update", "delete"]),
+    ]),
+
+  BacSimulationContent: a
+    .model({
+      simulationId: a.id().required(),
+      instructions: a.string(),
+      promptText: a.string(),
+    })
+    .identifier(["simulationId"])
+    .authorization((allow) => [
+      allow.group("Admin").to(["create", "read", "update", "delete"]),
+    ]),
+
+  BacRequestStatus: a.enum(["PENDING", "APPROVED", "REJECTED"]),
+
+  BacRequest: a
+    .model({
+      owner: a.string().required(), // Cognito sub
+      simulationId: a.id().required(),
+      requesterEmail: a.email(),
+      subject: a.string(),
+      status: a.ref("BacRequestStatus"),
+      requestedAt: a.datetime(),
+      decidedAt: a.datetime(),
+      decidedBy: a.string(),
+      note: a.string(),
+      confirmationEmailSentAt: a.datetime(),
+      confirmationEmailError: a.string(),
+    })
+    .identifier(["owner", "simulationId"])
+    .authorization((allow) => [
+      // Students can read/delete their own request. Creation goes through
+      // requestBacAccess so the backend captures the authenticated email.
+      allow.ownerDefinedIn("owner").identityClaim("sub").to(["read", "delete"]),
+      allow.group("Admin").to(["read", "update", "delete"]),
+    ])
+    .secondaryIndexes((index) => [
+      index("owner").sortKeys(["requestedAt"]),
+      index("status").sortKeys(["requestedAt"]),
+      index("simulationId").sortKeys(["requestedAt"]),
+    ]),
+
+  BacAccess: a
+    .model({
+      owner: a.string().required(), // Cognito sub
+      simulationId: a.id().required(),
+      grantedAt: a.datetime(),
+      grantedBy: a.string(),
+      note: a.string(),
+    })
+    .identifier(["owner", "simulationId"])
+    .authorization((allow) => [
+      allow.ownerDefinedIn("owner").identityClaim("sub").to(["read"]),
+      allow.group("Admin").to(["create", "read", "update", "delete"]),
+    ])
+    .secondaryIndexes((index) => [
+      index("owner").sortKeys(["grantedAt"]),
+      index("simulationId").sortKeys(["grantedAt"]),
     ]),
 
   BacSubmission: a
@@ -365,6 +440,12 @@ const schema = a.schema({
     studentTopicRatingAfter: a.float(),
   }),
 
+  BacSimulationContentView: a.customType({
+    simulationId: a.id().required(),
+    instructions: a.string(),
+    promptText: a.string(),
+  }),
+
   ExamTaskPublic: a.customType({
     id: a.id().required(),
     order: a.integer(),
@@ -447,6 +528,34 @@ const schema = a.schema({
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(submitPracticeAnswerFn)),
 
+  requestBacAccess: a
+    .mutation()
+    .arguments({
+      simulationId: a.id().required(),
+    })
+    .returns(a.ref("BacRequest"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(requestBacAccessFn)),
+
+  decideBacRequest: a
+    .mutation()
+    .arguments({
+      owner: a.string().required(),
+      simulationId: a.id().required(),
+      status: a.ref("BacRequestStatus"),
+      note: a.string(),
+    })
+    .returns(a.ref("BacRequest"))
+    .authorization((allow) => [allow.group("Admin")])
+    .handler(a.handler.function(decideBacRequestFn)),
+
+  getBacSimulationContent: a
+    .query()
+    .arguments({ simulationId: a.id().required() })
+    .returns(a.ref("BacSimulationContentView"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(getBacSimulationContentFn)),
+
   submitBacSubmission: a
     .mutation()
     .arguments({
@@ -470,6 +579,9 @@ const schema = a.schema({
   allow.resource(listArchiveProblemsFn).to(["query"]),
   allow.resource(recommendAdaptiveTaskFn).to(["query"]),
   allow.resource(submitPracticeAnswerFn).to(["query", "mutate"]),
+  allow.resource(requestBacAccessFn).to(["query", "mutate"]),
+  allow.resource(decideBacRequestFn).to(["query", "mutate"]),
+  allow.resource(getBacSimulationContentFn).to(["query"]),
   allow.resource(submitBacSubmissionFn).to(["query", "mutate"]),
 ]);
 

@@ -68,6 +68,9 @@ export const handler: Schema["submitBacSubmission"]["functionHandler"] = async (
   const simulation = simulationRes.data;
   if (!simulation) throw new Error("BAC_SIMULATION_NOT_FOUND");
 
+  const accessRes = await client.models.BacAccess.get({ owner: userId, simulationId });
+  if (!accessRes.data) throw new Error("BAC_ACCESS_REQUIRED");
+
   const startMs = parseIsoMs(simulation.startAt);
   const durationMinutes = Number(simulation.durationMinutes ?? 0);
   const endMs =

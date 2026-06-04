@@ -17,7 +17,9 @@ import { getCurrentUser } from "aws-amplify/auth";
 const client = generateClient<Schema>();
 
 type Exam = Schema["MockExam"]["type"];
+type BacSimulation = Schema["BacSimulation"]["type"];
 type ExamRequest = Schema["ExamRequest"]["type"];
+type BacRequest = Schema["BacRequest"]["type"];
 type Profile = Schema["UserProfile"]["type"];
 
 export default function AdminRequestsPage() {
@@ -26,7 +28,9 @@ export default function AdminRequestsPage() {
   const [loading, setLoading] = useState(true);
 
   const [requests, setRequests] = useState<ExamRequest[]>([]);
+  const [bacRequests, setBacRequests] = useState<BacRequest[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
+  const [bacSimulations, setBacSimulations] = useState<BacSimulation[]>([]);
   const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
   const [noteByKey, setNoteByKey] = useState<Record<string, string>>({});
   const [workingKey, setWorkingKey] = useState<string | null>(null);
@@ -37,24 +41,47 @@ export default function AdminRequestsPage() {
     return m;
   }, [exams]);
 
+  const bacSimulationTitleById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const simulation of bacSimulations) {
+      m.set(simulation.id, simulation.title ?? simulation.id);
+    }
+    return m;
+  }, [bacSimulations]);
+
   async function refresh() {
     setLoading(true);
 
-    const reqRes = await client.models.ExamRequest.list({
-      filter: { status: { eq: "PENDING" } },
-      limit: 500,
-    });
+    const [reqRes, bacReqRes, examsRes, bacSimulationsRes] = await Promise.all([
+      client.models.ExamRequest.list({
+        filter: { status: { eq: "PENDING" } },
+        limit: 500,
+      }),
+      client.models.BacRequest.list({
+        filter: { status: { eq: "PENDING" } },
+        limit: 500,
+      }),
+      client.models.MockExam.list({ limit: 500 }),
+      client.models.BacSimulation.list({ limit: 500 }),
+    ]);
+
     if (reqRes.errors?.length) console.error(reqRes.errors);
     const pendingRequests = reqRes.data ?? [];
     setRequests(pendingRequests);
 
-    const examsRes = await client.models.MockExam.list({ limit: 500 });
+    if (bacReqRes.errors?.length) console.error(bacReqRes.errors);
+    const pendingBacRequests = bacReqRes.data ?? [];
+    setBacRequests(pendingBacRequests);
+
     if (examsRes.errors?.length) console.error(examsRes.errors);
     setExams(examsRes.data ?? []);
 
+    if (bacSimulationsRes.errors?.length) console.error(bacSimulationsRes.errors);
+    setBacSimulations(bacSimulationsRes.data ?? []);
+
     const ownerIds = Array.from(
       new Set(
-        pendingRequests
+        [...pendingRequests, ...pendingBacRequests]
           .map((r) => r.owner)
           .filter((owner): owner is string => Boolean(owner))
       )
@@ -157,6 +184,43 @@ export default function AdminRequestsPage() {
     }
   }
 
+  async function decideBac(req: BacRequest, status: "APPROVED" | "REJECTED") {
+    const owner = req.owner;
+    const simulationId = req.simulationId;
+    if (!owner || !simulationId) return;
+
+    const key = `bac::${owner}::${simulationId}`;
+    const note = (noteByKey[key] ?? "").trim();
+
+    setWorkingKey(key);
+    try {
+      const res = await client.mutations.decideBacRequest({
+        owner,
+        simulationId,
+        status,
+        note: note || undefined,
+      });
+
+      if (res.errors?.length || !res.data) {
+        console.error(res.errors);
+        alert("Actualizarea cererii Bac a eșuat (verifică consola).");
+        return;
+      }
+
+      if (status === "APPROVED" && res.data.confirmationEmailError) {
+        alert(
+          `Cererea Bac a fost aprobată, dar e-mailul nu a fost trimis: ${res.data.confirmationEmailError}`
+        );
+      }
+
+      setBacRequests((prev) =>
+        prev.filter((r) => !(r.owner === owner && r.simulationId === simulationId))
+      );
+    } finally {
+      setWorkingKey(null);
+    }
+  }
+
   const inputStyle: React.CSSProperties = {
     padding: "12px 12px",
     borderRadius: 12,
@@ -179,7 +243,7 @@ export default function AdminRequestsPage() {
             <div className="page-title">Administrator • Cereri</div>
 
             <div className="small" style={{ marginLeft: 8 }}>
-              Aprobă sau respinge cererile de acces la examene.
+              Aprobă sau respinge cererile de acces la examene și Bac.
             </div>
 
             <div className="panel-actions">
@@ -190,7 +254,7 @@ export default function AdminRequestsPage() {
           </div>
 
           <Card>
-            <div className="section-title">Cereri în așteptare</div>
+            <div className="section-title">Cereri admitere în așteptare</div>
 
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {loading ? (
@@ -250,6 +314,95 @@ export default function AdminRequestsPage() {
 
                         <button
                           onClick={() => decide(r, "REJECTED")}
+                          disabled={workingKey === key}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            padding: "10px 0",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: "rgba(0,0,0,0.55)",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          Respinge
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="section-title">Cereri Bac în așteptare</div>
+
+            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              {loading ? (
+                <p className="small" style={{ margin: 0 }}>
+                  Se încarcă…
+                </p>
+              ) : bacRequests.length === 0 ? (
+                <p className="small" style={{ margin: 0 }}>
+                  Nu există cereri Bac în așteptare.
+                </p>
+              ) : (
+                bacRequests.map((r) => {
+                  const owner = r.owner;
+                  const simulationId = r.simulationId;
+                  const key = `bac::${owner ?? "?"}::${simulationId ?? "?"}`;
+
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: 12,
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ fontWeight: 760, letterSpacing: -0.2 }}>
+                        {bacSimulationTitleById.get(simulationId ?? "") ??
+                          simulationId ??
+                          "Simulare Bac necunoscută"}
+                      </div>
+
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        ID simulare Bac: {simulationId ?? "—"}
+                      </div>
+
+                      <div className="small">
+                        Elev: <span style={{ opacity: 0.85 }}>{formatRequester(owner)}</span>
+                      </div>
+
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Email: {r.requesterEmail ?? "—"}
+                      </div>
+
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Solicitat la: {formatWhen(r.requestedAt)}
+                      </div>
+
+                      <input
+                        placeholder="Notă opțională pentru confirmare"
+                        value={noteByKey[key] ?? ""}
+                        onChange={(e) => setNoteByKey((p) => ({ ...p, [key]: e.target.value }))}
+                        style={inputStyle}
+                      />
+
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <OutlineButton
+                          onClick={() => decideBac(r, "APPROVED")}
+                          disabled={workingKey === key}
+                        >
+                          {workingKey === key ? "Se procesează…" : "Aprobă și trimite e-mail"}
+                        </OutlineButton>
+
+                        <button
+                          onClick={() => decideBac(r, "REJECTED")}
                           disabled={workingKey === key}
                           style={{
                             background: "transparent",

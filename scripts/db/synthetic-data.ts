@@ -18,6 +18,9 @@ const MODEL_NAMES = [
   "ExamAttempt",
   "ExamAttemptLock",
   "BacSimulation",
+  "BacSimulationContent",
+  "BacRequest",
+  "BacAccess",
   "BacSubmission",
   "BacEvaluation",
 ] as const;
@@ -32,6 +35,9 @@ const RESTORE_ORDER = [
   "ExamAttempt",
   "ExamAttemptLock",
   "BacSimulation",
+  "BacSimulationContent",
+  "BacRequest",
+  "BacAccess",
   "BacSubmission",
   "BacEvaluation",
 ] as const;
@@ -214,6 +220,9 @@ function deterministicTableMap(ctx: CliContext) {
     ExamAttempt: `ExamAttempt-${ctx.apiId}-${ctx.tableSuffix}`,
     ExamAttemptLock: `ExamAttemptLock-${ctx.apiId}-${ctx.tableSuffix}`,
     BacSimulation: `BacSimulation-${ctx.apiId}-${ctx.tableSuffix}`,
+    BacSimulationContent: `BacSimulationContent-${ctx.apiId}-${ctx.tableSuffix}`,
+    BacRequest: `BacRequest-${ctx.apiId}-${ctx.tableSuffix}`,
+    BacAccess: `BacAccess-${ctx.apiId}-${ctx.tableSuffix}`,
     BacSubmission: `BacSubmission-${ctx.apiId}-${ctx.tableSuffix}`,
     BacEvaluation: `BacEvaluation-${ctx.apiId}-${ctx.tableSuffix}`,
   };
