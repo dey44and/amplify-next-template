@@ -23,6 +23,19 @@ type BacAccess = Schema["BacAccess"]["type"];
 type BacSubmission = Schema["BacSubmission"]["type"];
 type BacEvaluation = Schema["BacEvaluation"]["type"];
 
+const REQUEST_GRACE_MS = 15 * 60_000;
+
+function getRequestWindowClosed(simulation: BacSimulation, nowMs: number) {
+  const startMs = simulation.startAt ? toTimestamp(simulation.startAt) : Number.NaN;
+  const durationMinutes = Number(simulation.durationMinutes ?? 0);
+  const endMs =
+    Number.isFinite(startMs) && Number.isFinite(durationMinutes)
+      ? startMs + durationMinutes * 60_000
+      : Number.NaN;
+
+  return !Number.isFinite(endMs) || durationMinutes <= 0 || nowMs > endMs + REQUEST_GRACE_MS;
+}
+
 function statusLabel(args: {
   simulation: BacSimulation;
   request?: BacRequest;
@@ -37,6 +50,7 @@ function statusLabel(args: {
     if (request?.status === "PENDING") return "Cerere în așteptare";
     if (request?.status === "REJECTED") return "Cerere respinsă";
     if (request?.status === "APPROVED") return "Aprobat";
+    if (getRequestWindowClosed(simulation, nowMs)) return "Încheiat";
     return "Necesită aprobare";
   }
 
@@ -275,6 +289,7 @@ export default function BacPage() {
                     const evaluation = evaluationBySimulationId.get(simulation.id);
                     const request = requestBySimulationId.get(simulation.id);
                     const accessRow = accessBySimulationId.get(simulation.id);
+                    const requestWindowClosed = getRequestWindowClosed(simulation, nowMs);
                     const label = statusLabel({
                       simulation,
                       request,
@@ -313,6 +328,8 @@ export default function BacPage() {
                             </>
                           ) : request?.status === "REJECTED" ? (
                             <OutlineButton disabled>Cerere respinsă</OutlineButton>
+                          ) : requestWindowClosed ? (
+                            <OutlineButton disabled>Încheiat</OutlineButton>
                           ) : (
                             <OutlineButton
                               onClick={() => requestParticipation(simulation)}

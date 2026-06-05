@@ -18,6 +18,13 @@ Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
 const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
 
+const REQUEST_GRACE_MS = 15 * 60_000;
+
+function parseIsoMs(iso?: string | null) {
+  if (!iso) return Number.NaN;
+  return new Date(iso).getTime();
+}
+
 function getAttribute(attributes: AttributeType[] | undefined, name: string) {
   return attributes?.find((attribute) => attribute.Name === name)?.Value?.trim() || undefined;
 }
@@ -78,7 +85,22 @@ export const handler: Schema["requestBacAccess"]["functionHandler"] = async (eve
   if (!simulationId) throw new Error("BAC_SIMULATION_REQUIRED");
 
   const simulationRes = await client.models.BacSimulation.get({ id: simulationId });
-  if (!simulationRes.data) throw new Error("BAC_SIMULATION_NOT_FOUND");
+  const simulation = simulationRes.data;
+  if (!simulation) throw new Error("BAC_SIMULATION_NOT_FOUND");
+
+  const startMs = parseIsoMs(simulation.startAt);
+  const durationMinutes = Number(simulation.durationMinutes ?? 0);
+  const endMs =
+    Number.isFinite(startMs) && Number.isFinite(durationMinutes)
+      ? startMs + durationMinutes * 60_000
+      : Number.NaN;
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || durationMinutes <= 0) {
+    throw new Error("BAC_INVALID_WINDOW");
+  }
+  if (Date.now() > endMs + REQUEST_GRACE_MS) {
+    throw new Error("BAC_REQUEST_WINDOW_CLOSED");
+  }
 
   const existingRes = await client.models.BacRequest.get({ owner, simulationId });
   if (existingRes.data) {
@@ -102,7 +124,7 @@ export const handler: Schema["requestBacAccess"]["functionHandler"] = async (eve
     owner,
     simulationId,
     requesterEmail: requesterEmail ?? null,
-    subject: simulationRes.data.subject ?? null,
+    subject: simulation.subject ?? null,
     status: "PENDING",
     requestedAt: nowIso,
   });

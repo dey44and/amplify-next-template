@@ -27,6 +27,7 @@ type BacEvaluation = Schema["BacEvaluation"]["type"];
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const SUBMIT_GRACE_MS = 15 * 60_000;
+const REQUEST_GRACE_MS = 15 * 60_000;
 
 function safeFileName(name: string) {
   const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-");
@@ -38,6 +39,9 @@ function mapBacSubmitError(raw?: string) {
   if (msg.includes("BAC_NOT_STARTED")) return "Simularea nu a început încă.";
   if (msg.includes("BAC_ENDED")) return "Intervalul de trimitere s-a încheiat.";
   if (msg.includes("BAC_ACCESS_REQUIRED")) return "Participarea trebuie aprobată înainte.";
+  if (msg.includes("BAC_REQUEST_WINDOW_CLOSED")) {
+    return "Perioada de solicitare a participării s-a încheiat.";
+  }
   if (msg.includes("BAC_EMAIL_REQUIRED")) {
     return "Nu am putut identifica emailul contului. Reautentifică-te și încearcă din nou.";
   }
@@ -157,6 +161,9 @@ export default function BacSimulationPage() {
       ? nowMs >= startMs && nowMs <= endMs + SUBMIT_GRACE_MS
       : false;
   const isAfter = Number.isFinite(endMs) ? nowMs > endMs + SUBMIT_GRACE_MS : false;
+  const requestWindowClosed = Number.isFinite(endMs)
+    ? nowMs > endMs + REQUEST_GRACE_MS
+    : true;
   const isGraded = evaluation?.status === "GRADED";
   const hasAccess = Boolean(access);
 
@@ -168,7 +175,7 @@ export default function BacSimulationPage() {
       const res = await client.mutations.requestBacAccess({ simulationId: simulation.id });
       if (res.errors?.length || !res.data) {
         console.error(res.errors);
-        alert("Solicitarea participării a eșuat.");
+        alert(mapBacSubmitError(res.errors?.[0]?.message ?? "Solicitarea participării a eșuat."));
         return;
       }
       await refresh(userId);
@@ -356,6 +363,8 @@ export default function BacSimulationPage() {
                       </>
                     ) : request?.status === "REJECTED" ? (
                       <OutlineButton disabled>Cerere respinsă</OutlineButton>
+                    ) : requestWindowClosed ? (
+                      <OutlineButton disabled>Perioada s-a încheiat</OutlineButton>
                     ) : (
                       <OutlineButton onClick={requestParticipation} disabled={requesting}>
                         {requesting ? "Se trimite…" : "Solicită participare"}
