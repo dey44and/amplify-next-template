@@ -7,6 +7,7 @@ import { HeaderUserActions } from "@/components/HeaderUserActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { hasBacModels } from "@/lib/amplifyModelAvailability";
 import { formatWhen } from "@/lib/dateTime";
 import { isAdmin } from "@/lib/isAdmin";
 
@@ -34,6 +35,7 @@ export default function AdminRequestsPage() {
   const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
   const [noteByKey, setNoteByKey] = useState<Record<string, string>>({});
   const [workingKey, setWorkingKey] = useState<string | null>(null);
+  const [bacBackendAvailable, setBacBackendAvailable] = useState(true);
 
   const examTitleById = useMemo(() => {
     const m = new Map<string, string>();
@@ -52,32 +54,40 @@ export default function AdminRequestsPage() {
   async function refresh() {
     setLoading(true);
 
-    const [reqRes, bacReqRes, examsRes, bacSimulationsRes] = await Promise.all([
+    const canLoadBac = hasBacModels(client.models);
+    setBacBackendAvailable(canLoadBac);
+
+    const [reqRes, examsRes] = await Promise.all([
       client.models.ExamRequest.list({
         filter: { status: { eq: "PENDING" } },
         limit: 500,
       }),
-      client.models.BacRequest.list({
-        filter: { status: { eq: "PENDING" } },
-        limit: 500,
-      }),
       client.models.MockExam.list({ limit: 500 }),
-      client.models.BacSimulation.list({ limit: 500 }),
     ]);
+
+    const [bacReqRes, bacSimulationsRes] = canLoadBac
+      ? await Promise.all([
+          client.models.BacRequest.list({
+            filter: { status: { eq: "PENDING" } },
+            limit: 500,
+          }),
+          client.models.BacSimulation.list({ limit: 500 }),
+        ])
+      : [null, null];
 
     if (reqRes.errors?.length) console.error(reqRes.errors);
     const pendingRequests = reqRes.data ?? [];
     setRequests(pendingRequests);
 
-    if (bacReqRes.errors?.length) console.error(bacReqRes.errors);
-    const pendingBacRequests = bacReqRes.data ?? [];
+    if (bacReqRes?.errors?.length) console.error(bacReqRes.errors);
+    const pendingBacRequests = bacReqRes?.data ?? [];
     setBacRequests(pendingBacRequests);
 
     if (examsRes.errors?.length) console.error(examsRes.errors);
     setExams(examsRes.data ?? []);
 
-    if (bacSimulationsRes.errors?.length) console.error(bacSimulationsRes.errors);
-    setBacSimulations(bacSimulationsRes.data ?? []);
+    if (bacSimulationsRes?.errors?.length) console.error(bacSimulationsRes.errors);
+    setBacSimulations(bacSimulationsRes?.data ?? []);
 
     const ownerIds = Array.from(
       new Set(
@@ -338,11 +348,21 @@ export default function AdminRequestsPage() {
 
           <Card>
             <div className="section-title">Cereri Bac în așteptare</div>
+            {!bacBackendAvailable ? (
+              <div className="small" style={{ marginTop: 8, color: "#8a5b00" }}>
+                Cererile Bac nu pot fi încărcate deoarece configurația Amplify curentă nu conține
+                modelele Bac. Regenerază <code>amplify_outputs.json</code> după deploy-ul backendului.
+              </div>
+            ) : null}
 
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {loading ? (
                 <p className="small" style={{ margin: 0 }}>
                   Se încarcă…
+                </p>
+              ) : !bacBackendAvailable ? (
+                <p className="small" style={{ margin: 0 }}>
+                  Secțiunea Bac este indisponibilă în configurația curentă.
                 </p>
               ) : bacRequests.length === 0 ? (
                 <p className="small" style={{ margin: 0 }}>

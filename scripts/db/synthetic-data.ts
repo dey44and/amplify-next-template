@@ -357,17 +357,15 @@ async function batchWrite(ctx: CliContext, tableName: string, requests: WriteReq
     const next: WriteRequest[] = [];
 
     for (const part of chunk(pending, 25)) {
-      const payload = {
-        RequestItems: {
-          [tableName]: part,
-        },
+      const requestItems = {
+        [tableName]: part,
       };
 
       const res = await runAwsJsonWithFile(
         ctx,
         ["dynamodb", "batch-write-item"],
         "--request-items",
-        payload
+        requestItems
       );
 
       const tableUnprocessed = (res.UnprocessedItems as Record<string, WriteRequest[]> | undefined)?.[

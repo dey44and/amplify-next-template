@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { OutlineButton } from "@/components/ui";
+import { isAdmin } from "@/lib/isAdmin";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
@@ -17,6 +18,7 @@ export function HeaderUserActions() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [fallbackLabel, setFallbackLabel] = useState("U");
   const [showImage, setShowImage] = useState(true);
+  const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +31,10 @@ export function HeaderUserActions() {
         const loginId = user.signInDetails?.loginId ?? user.username ?? "Utilizator";
         setFallbackLabel(loginId.slice(0, 1).toUpperCase() || "U");
 
+        const hasAdminAccess = await isAdmin();
+        if (cancelled) return;
+        setAdmin(hasAdminAccess);
+
         const profileRes = await client.models.UserProfile.get({ id: user.userId });
         if (cancelled) return;
 
@@ -37,6 +43,7 @@ export function HeaderUserActions() {
         if (!cancelled) {
           setAvatarUrl(null);
           setFallbackLabel("U");
+          setAdmin(false);
         }
       }
     })();
@@ -77,6 +84,12 @@ export function HeaderUserActions() {
           <span className="header-avatar-fallback">{fallbackLabel}</span>
         )}
       </button>
+
+      {admin ? (
+        <OutlineButton className="header-signout-btn" onClick={() => router.push("/admin")}>
+          Admin
+        </OutlineButton>
+      ) : null}
 
       <OutlineButton className="header-signout-btn" onClick={handleSignOut}>
         Deconectare

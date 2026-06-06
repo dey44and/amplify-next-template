@@ -325,22 +325,6 @@ export default function DashboardPage() {
               <div className="page-title">
                 Bine ai venit, {profile?.firstName} {profile?.lastName}
               </div>
-
-              <div className="panel-actions">
-                {isAdmin && (
-                  <>
-                    <OutlineButton onClick={() => router.push("/admin/exams")}>
-                      Simulări administrator
-                    </OutlineButton>
-                    <OutlineButton onClick={() => router.push("/admin/bac")}>
-                      Bac administrator
-                    </OutlineButton>
-                    <OutlineButton onClick={() => router.push("/admin/requests")}>
-                      Cereri
-                    </OutlineButton>
-                  </>
-                )}
-              </div>
             </div>
 
             <Card>
@@ -370,7 +354,7 @@ export default function DashboardPage() {
                   <div className="metric-label">Stare acces</div>
                   <div className="metric-value">{isAdmin ? "Administrator" : access.length}</div>
                   <div className="metric-helper">
-                    {isAdmin ? "Poți gestiona toate simulările" : pendingLabel}
+                    {isAdmin ? "Administrarea este în consola separată" : pendingLabel}
                   </div>
                 </div>
               </div>
@@ -446,11 +430,7 @@ export default function DashboardPage() {
                                   </div>
 
                                   <div className="exam-actions">
-                                    {isAdmin ? (
-                                      <OutlineButton onClick={() => router.push(`/admin/exams/${e.id}`)}>
-                                        Gestionează simularea
-                                      </OutlineButton>
-                                    ) : hasAccess ? (
+                                    {isAdmin ? null : hasAccess ? (
                                       examState === "during" ? (
                                         <OutlineButton onClick={() => router.push(`/exam/${e.id}`)}>
                                           Începe examenul

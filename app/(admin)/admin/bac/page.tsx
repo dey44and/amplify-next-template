@@ -8,6 +8,7 @@ import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { hasBacModels } from "@/lib/amplifyModelAvailability";
 import { formatWhen, toTimestamp } from "@/lib/dateTime";
 import { notNull } from "@/lib/notNull";
 
@@ -70,9 +71,19 @@ export default function AdminBacPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [simulations, setSimulations] = useState<BacSimulation[]>([]);
   const [form, setForm] = useState<BacSimulationForm>(emptyForm);
+  const [bacBackendAvailable, setBacBackendAvailable] = useState(true);
 
   async function refresh() {
     setLoading(true);
+    const canLoadBac = hasBacModels(client.models);
+    setBacBackendAvailable(canLoadBac);
+
+    if (!canLoadBac) {
+      setSimulations([]);
+      setLoading(false);
+      return;
+    }
+
     const res = await client.models.BacSimulation.list({ limit: 500 });
     if (res.errors?.length) console.error(res.errors);
     setSimulations((res.data ?? []).filter(notNull));
@@ -100,6 +111,8 @@ export default function AdminBacPage() {
   }
 
   async function editSimulation(simulation: BacSimulation) {
+    if (!bacBackendAvailable) return;
+
     setLoadingContentForEdit(true);
     setEditingId(simulation.id);
     setForm({
@@ -132,6 +145,11 @@ export default function AdminBacPage() {
   }
 
   async function saveSimulation() {
+    if (!bacBackendAvailable) {
+      alert("Modelele Bac nu sunt disponibile în configurația Amplify curentă.");
+      return;
+    }
+
     const title = form.title.trim();
     const subject = form.subject.trim();
     const startAtLocal = form.startAt.trim();
@@ -208,6 +226,11 @@ export default function AdminBacPage() {
   }
 
   async function deleteSimulation(simulation: BacSimulation) {
+    if (!bacBackendAvailable) {
+      alert("Modelele Bac nu sunt disponibile în configurația Amplify curentă.");
+      return;
+    }
+
     const id = simulation.id;
     if (
       !confirm(
@@ -366,6 +389,12 @@ export default function AdminBacPage() {
             <div className="section-title">
               {editingId ? "Editează simulare Bac" : "Creează simulare Bac"}
             </div>
+            {!bacBackendAvailable ? (
+              <div className="small" style={{ marginTop: 8, color: "#8a5b00" }}>
+                Modelele Bac nu sunt în configurația Amplify curentă. Regenerază{" "}
+                <code>amplify_outputs.json</code> după ce backendul cu Bac este deployat.
+              </div>
+            ) : null}
             {editingId ? (
               <div className="page-subtitle" style={{ marginTop: 6 }}>
                 Modificările se aplică simulării selectate. Lucrările deja trimise rămân atașate.
@@ -378,7 +407,7 @@ export default function AdminBacPage() {
                 placeholder="Titlu"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                disabled={savingSimulation}
+                disabled={savingSimulation || !bacBackendAvailable}
                 className="field-input"
               />
 
@@ -386,7 +415,7 @@ export default function AdminBacPage() {
                 placeholder="Materie (ex.: Matematică M1, Română)"
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                disabled={savingSimulation}
+                disabled={savingSimulation || !bacBackendAvailable}
                 className="field-input"
               />
 
@@ -401,7 +430,7 @@ export default function AdminBacPage() {
                   type="datetime-local"
                   value={form.startAt}
                   onChange={(e) => setForm({ ...form, startAt: e.target.value })}
-                  disabled={savingSimulation}
+                  disabled={savingSimulation || !bacBackendAvailable}
                   className="field-input"
                 />
                 <input
@@ -411,7 +440,7 @@ export default function AdminBacPage() {
                   placeholder="Durată (min)"
                   value={form.durationMinutes}
                   onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-                  disabled={savingSimulation}
+                  disabled={savingSimulation || !bacBackendAvailable}
                   className="field-input"
                 />
                 <input
@@ -421,7 +450,7 @@ export default function AdminBacPage() {
                   placeholder="Max"
                   value={form.maxGrade}
                   onChange={(e) => setForm({ ...form, maxGrade: e.target.value })}
-                  disabled={savingSimulation}
+                  disabled={savingSimulation || !bacBackendAvailable}
                   className="field-input"
                 />
               </div>
@@ -430,7 +459,7 @@ export default function AdminBacPage() {
                 placeholder="Instrucțiuni pentru elevi"
                 value={form.instructions}
                 onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-                disabled={savingSimulation}
+                disabled={savingSimulation || !bacBackendAvailable}
                 className="field-input"
                 style={{ minHeight: 90, resize: "vertical" }}
               />
@@ -439,7 +468,7 @@ export default function AdminBacPage() {
                 placeholder="Subiect / cerințe (poate conține LaTeX)"
                 value={form.promptText}
                 onChange={(e) => setForm({ ...form, promptText: e.target.value })}
-                disabled={savingSimulation}
+                disabled={savingSimulation || !bacBackendAvailable}
                 className="field-input"
                 style={{ minHeight: 130, resize: "vertical" }}
               />
@@ -454,7 +483,7 @@ export default function AdminBacPage() {
               ) : null}
 
               <div className="exam-actions">
-                <OutlineButton onClick={saveSimulation} disabled={savingSimulation}>
+                <OutlineButton onClick={saveSimulation} disabled={savingSimulation || !bacBackendAvailable}>
                   {savingSimulation
                     ? editingId
                       ? "Se salvează…"
@@ -479,6 +508,10 @@ export default function AdminBacPage() {
               {loading ? (
                 <p className="small" style={{ margin: 0 }}>
                   Se încarcă…
+                </p>
+              ) : !bacBackendAvailable ? (
+                <p className="small" style={{ margin: 0 }}>
+                  Simulările Bac nu pot fi încărcate până când configurația Amplify include modelele Bac.
                 </p>
               ) : sortedSimulations.length === 0 ? (
                 <p className="small" style={{ margin: 0 }}>

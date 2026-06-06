@@ -8,6 +8,7 @@ import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { hasBacModels } from "@/lib/amplifyModelAvailability";
 import { formatWhen } from "@/lib/dateTime";
 import { getExamWindow } from "@/lib/examWindow";
 
@@ -75,6 +76,7 @@ export default function BacSimulationPage() {
   const [uploading, setUploading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [bacBackendAvailable, setBacBackendAvailable] = useState(true);
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
@@ -82,6 +84,19 @@ export default function BacSimulationPage() {
   }, []);
 
   async function refresh(currentUserId: string) {
+    const canLoadBac = hasBacModels(client.models);
+    setBacBackendAvailable(canLoadBac);
+    if (!canLoadBac) {
+      setSimulation(null);
+      setContent(null);
+      setRequest(null);
+      setAccess(null);
+      setSubmission(null);
+      setEvaluation(null);
+      setContentError("Simulările Bac nu sunt disponibile momentan.");
+      return;
+    }
+
     const [simulationRes, requestRes, accessRes, submissionRes, evaluationRes] =
       await Promise.all([
       client.models.BacSimulation.get({ id: simulationId }),
@@ -168,7 +183,7 @@ export default function BacSimulationPage() {
   const hasAccess = Boolean(access);
 
   async function requestParticipation() {
-    if (!simulation || !userId) return;
+    if (!simulation || !userId || !bacBackendAvailable) return;
 
     setRequesting(true);
     try {
@@ -185,7 +200,7 @@ export default function BacSimulationPage() {
   }
 
   async function deleteRequest() {
-    if (!request?.owner || !request.simulationId || !userId) return;
+    if (!bacBackendAvailable || !request?.owner || !request.simulationId || !userId) return;
     if (!confirm("Ștergi această cerere de participare?")) return;
 
     const res = await client.models.BacRequest.delete({
@@ -238,7 +253,7 @@ export default function BacSimulationPage() {
   }
 
   async function submitSolution() {
-    if (!simulation || !userId || !selectedFile) return;
+    if (!bacBackendAvailable || !simulation || !userId || !selectedFile) return;
 
     setUploading(true);
     setSubmitError(null);
@@ -313,7 +328,15 @@ export default function BacSimulationPage() {
           <p className="small">Se încarcă simularea Bac…</p>
         ) : !simulation ? (
           <Card>
-            <div className="section-title">Simularea nu a fost găsită</div>
+            <div className="section-title">
+              {bacBackendAvailable ? "Simularea nu a fost găsită" : "Bac indisponibil"}
+            </div>
+            {!bacBackendAvailable ? (
+              <div className="small" style={{ marginTop: 8, color: "#8a5b00" }}>
+                Configurația aplicației nu include încă modelele Bac. Revino după sincronizarea
+                backendului.
+              </div>
+            ) : null}
             <div style={{ marginTop: 12 }}>
               <OutlineButton onClick={() => router.push("/bac")}>Înapoi</OutlineButton>
             </div>

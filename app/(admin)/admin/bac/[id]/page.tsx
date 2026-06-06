@@ -8,6 +8,7 @@ import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { hasBacModels } from "@/lib/amplifyModelAvailability";
 import { formatWhen } from "@/lib/dateTime";
 import { notNull } from "@/lib/notNull";
 
@@ -20,6 +21,8 @@ const client = generateClient<Schema>();
 
 type BacSimulation = Schema["BacSimulation"]["type"];
 type BacSimulationContent = Schema["BacSimulationContent"]["type"];
+type BacRequest = Schema["BacRequest"]["type"];
+type BacAccess = Schema["BacAccess"]["type"];
 type BacSubmission = Schema["BacSubmission"]["type"];
 type BacEvaluation = Schema["BacEvaluation"]["type"];
 type Profile = Schema["UserProfile"]["type"];
@@ -46,6 +49,13 @@ function formatRequester(owner: string | null | undefined, profilesByOwner: Map<
   return fullName ? `${fullName} (${ownerId})` : ownerId;
 }
 
+function requestStatusLabel(status?: string | null) {
+  if (status === "PENDING") return "În așteptare";
+  if (status === "APPROVED") return "Aprobat";
+  if (status === "REJECTED") return "Respins";
+  return "—";
+}
+
 export default function AdminBacDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -55,14 +65,32 @@ export default function AdminBacDetailPage() {
   const [loading, setLoading] = useState(true);
   const [simulation, setSimulation] = useState<BacSimulation | null>(null);
   const [simulationContent, setSimulationContent] = useState<BacSimulationContent | null>(null);
+  const [requests, setRequests] = useState<BacRequest[]>([]);
+  const [access, setAccess] = useState<BacAccess[]>([]);
   const [submissions, setSubmissions] = useState<BacSubmission[]>([]);
   const [evaluations, setEvaluations] = useState<BacEvaluation[]>([]);
   const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
   const [drafts, setDrafts] = useState<Record<string, EvaluationDraft>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [bacBackendAvailable, setBacBackendAvailable] = useState(true);
 
   async function refresh() {
     setLoading(true);
+
+    const canLoadBac = hasBacModels(client.models);
+    setBacBackendAvailable(canLoadBac);
+    if (!canLoadBac) {
+      setSimulation(null);
+      setSimulationContent(null);
+      setRequests([]);
+      setAccess([]);
+      setSubmissions([]);
+      setEvaluations([]);
+      setProfilesByOwner(new Map());
+      setDrafts({});
+      setLoading(false);
+      return;
+    }
 
     let currentAdminId = adminUserId;
     if (!currentAdminId) {
@@ -71,7 +99,7 @@ export default function AdminBacDetailPage() {
       setAdminUserId(currentAdminId);
     }
 
-    const [simulationRes, contentRes, submissionsRes, evaluationsRes] = await Promise.all([
+    const [simulationRes, contentRes, submissionsRes, evaluationsRes, requestsRes, accessRes] = await Promise.all([
       client.models.BacSimulation.get({ id: simulationId }),
       client.models.BacSimulationContent.get({ simulationId }),
       client.models.BacSubmission.list({
@@ -82,28 +110,44 @@ export default function AdminBacDetailPage() {
         filter: { simulationId: { eq: simulationId } },
         limit: 1000,
       }),
+      client.models.BacRequest.list({
+        filter: { simulationId: { eq: simulationId } },
+        limit: 1000,
+      }),
+      client.models.BacAccess.list({
+        filter: { simulationId: { eq: simulationId } },
+        limit: 1000,
+      }),
     ]);
 
     if (simulationRes.errors?.length) console.error(simulationRes.errors);
     if (contentRes.errors?.length) console.error(contentRes.errors);
     if (submissionsRes.errors?.length) console.error(submissionsRes.errors);
     if (evaluationsRes.errors?.length) console.error(evaluationsRes.errors);
+    if (requestsRes.errors?.length) console.error(requestsRes.errors);
+    if (accessRes.errors?.length) console.error(accessRes.errors);
 
     const nextSimulation = simulationRes.data ?? null;
     const nextSimulationContent = contentRes.data ?? null;
     const nextSubmissions = (submissionsRes.data ?? []).filter(notNull);
     const nextEvaluations = (evaluationsRes.data ?? []).filter(notNull);
+    const nextRequests = (requestsRes.data ?? []).filter(notNull);
+    const nextAccess = (accessRes.data ?? []).filter(notNull);
 
     setSimulation(nextSimulation);
     setSimulationContent(nextSimulationContent);
+    setRequests(nextRequests);
+    setAccess(nextAccess);
     setSubmissions(nextSubmissions);
     setEvaluations(nextEvaluations);
 
     const ownerIds = Array.from(
       new Set(
-        nextSubmissions
-          .map((submission) => submission.owner)
-          .filter((owner): owner is string => Boolean(owner))
+        [
+          ...nextSubmissions.map((submission) => submission.owner),
+          ...nextRequests.map((request) => request.owner),
+          ...nextAccess.map((entry) => entry.owner),
+        ].filter((owner): owner is string => Boolean(owner))
       )
     );
 
@@ -178,6 +222,45 @@ export default function AdminBacDetailPage() {
     [submissions]
   );
 
+  const participantRows = useMemo(() => {
+    const owners = new Set<string>();
+    for (const request of requests) {
+      if (request.owner) owners.add(request.owner);
+    }
+    for (const entry of access) {
+      if (entry.owner) owners.add(entry.owner);
+    }
+    for (const submission of submissions) {
+      if (submission.owner) owners.add(submission.owner);
+    }
+    for (const evaluation of evaluations) {
+      if (evaluation.submissionOwner) owners.add(evaluation.submissionOwner);
+    }
+
+    return Array.from(owners)
+      .map((owner) => {
+        const request = requests.find((entry) => entry.owner === owner) ?? null;
+        const accessEntry = access.find((entry) => entry.owner === owner) ?? null;
+        const submission = submissions.find((entry) => entry.owner === owner) ?? null;
+        const evaluation = evaluationsByOwner.get(owner) ?? null;
+
+        return {
+          owner,
+          request,
+          access: accessEntry,
+          submission,
+          evaluation,
+          sortMs: Math.max(
+            new Date(request?.requestedAt ?? 0).getTime(),
+            new Date(accessEntry?.grantedAt ?? 0).getTime(),
+            new Date(submission?.submittedAt ?? submission?.updatedAt ?? 0).getTime(),
+            new Date(evaluation?.gradedAt ?? evaluation?.updatedAt ?? 0).getTime()
+          ),
+        };
+      })
+      .sort((a, b) => b.sortMs - a.sortMs);
+  }, [access, evaluations, evaluationsByOwner, requests, submissions]);
+
   function updateDraft(owner: string, patch: Partial<EvaluationDraft>) {
     setDrafts((prev) => {
       const base: EvaluationDraft = prev[owner] ?? {
@@ -215,6 +298,11 @@ export default function AdminBacDetailPage() {
   }
 
   async function saveEvaluation(submission: BacSubmission) {
+    if (!bacBackendAvailable) {
+      alert("Modelele Bac nu sunt disponibile în configurația Amplify curentă.");
+      return;
+    }
+
     const owner = submission.owner;
     if (!owner || !adminUserId) return;
 
@@ -276,7 +364,15 @@ export default function AdminBacDetailPage() {
           <p className="small">Se încarcă evaluările Bac…</p>
         ) : !simulation ? (
           <Card>
-            <div className="section-title">Simularea nu a fost găsită</div>
+            <div className="section-title">
+              {bacBackendAvailable ? "Simularea nu a fost găsită" : "Bac indisponibil"}
+            </div>
+            {!bacBackendAvailable ? (
+              <div className="small" style={{ marginTop: 8, color: "#8a5b00" }}>
+                Modelele Bac nu sunt în configurația Amplify curentă. Regenerază{" "}
+                <code>amplify_outputs.json</code> după ce backendul cu Bac este deployat.
+              </div>
+            ) : null}
             <div style={{ marginTop: 12 }}>
               <OutlineButton onClick={() => router.push("/admin/bac")}>Înapoi</OutlineButton>
             </div>
@@ -319,6 +415,82 @@ export default function AdminBacDetailPage() {
                   <MathText className="task-question-text" text={simulationContent.promptText} />
                 </div>
               ) : null}
+            </Card>
+
+            <Card className="bac-card">
+              <div className="section-title">Participanți și cereri</div>
+              <div className="page-subtitle" style={{ marginTop: 6 }}>
+                Elevii înscriși sau interesați de această simulare de bacalaureat.
+              </div>
+
+              <div className="metric-grid">
+                <div className="metric-tile soft-mint">
+                  <div className="metric-label">Aprobați</div>
+                  <div className="metric-value">{access.length}</div>
+                  <div className="metric-helper">au primit confirmare</div>
+                </div>
+                <div className="metric-tile soft-lilac">
+                  <div className="metric-label">Cereri în așteptare</div>
+                  <div className="metric-value">
+                    {requests.filter((request) => request.status === "PENDING").length}
+                  </div>
+                  <div className="metric-helper">neprocesate încă</div>
+                </div>
+                <div className="metric-tile">
+                  <div className="metric-label">Cereri respinse</div>
+                  <div className="metric-value">
+                    {requests.filter((request) => request.status === "REJECTED").length}
+                  </div>
+                  <div className="metric-helper">istoric pentru simulare</div>
+                </div>
+                <div className="metric-tile soft-blue">
+                  <div className="metric-label">Lucrări</div>
+                  <div className="metric-value">{submissions.length}</div>
+                  <div className="metric-helper">documente trimise</div>
+                </div>
+              </div>
+
+              <div className="exam-list" style={{ marginTop: 14 }}>
+                {participantRows.length === 0 ? (
+                  <p className="small" style={{ margin: 0 }}>
+                    Nu există încă participanți sau cereri pentru această simulare.
+                  </p>
+                ) : (
+                  participantRows.map((row) => (
+                    <div key={row.owner} className="exam-item">
+                      <div className="exam-item-title">
+                        {formatRequester(row.owner, profilesByOwner)}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Email: {row.request?.requesterEmail ?? "indisponibil"}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Cerere: {requestStatusLabel(row.request?.status)}{" "}
+                        {row.request?.requestedAt ? `• ${formatWhen(row.request.requestedAt)}` : ""}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Acces: {row.access ? `aprobat la ${formatWhen(row.access.grantedAt)}` : "neaprobat"}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Lucrare:{" "}
+                        {row.submission
+                          ? `${row.submission.solutionOriginalName ?? "document"} • ${formatWhen(
+                              row.submission.submittedAt
+                            )}`
+                          : "netrimisă"}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Evaluare:{" "}
+                        {row.evaluation
+                          ? `${row.evaluation.manualGrade ?? "—"}/${
+                              row.evaluation.maxGrade ?? "—"
+                            } • ${row.evaluation.status ?? "—"}`
+                          : "neevaluată"}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </Card>
 
             <Card className="bac-card">

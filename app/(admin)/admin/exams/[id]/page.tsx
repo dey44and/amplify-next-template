@@ -8,6 +8,7 @@ import { MathText } from "@/components/MathText";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
+import { formatWhen } from "@/lib/dateTime";
 import { isAdmin } from "@/lib/isAdmin";
 import { notNull } from "@/lib/notNull";
 
@@ -20,6 +21,29 @@ const client = generateClient<Schema>();
 type Exam = Schema["MockExam"]["type"];
 type Task = Schema["Task"]["type"];
 type TaskKey = Schema["TaskKey"]["type"];
+type ExamRequest = Schema["ExamRequest"]["type"];
+type ExamAccess = Schema["ExamAccess"]["type"];
+type ExamAttempt = Schema["ExamAttempt"]["type"];
+type Profile = Schema["UserProfile"]["type"];
+
+function formatRequester(owner: string | null | undefined, profilesByOwner: Map<string, Profile>) {
+  const ownerId = String(owner ?? "").trim();
+  if (!ownerId) return "—";
+
+  const profile = profilesByOwner.get(ownerId);
+  const firstName = String(profile?.firstName ?? "").trim();
+  const lastName = String(profile?.lastName ?? "").trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+  return fullName ? `${fullName} (${ownerId})` : ownerId;
+}
+
+function requestStatusLabel(status?: string | null) {
+  if (status === "PENDING") return "În așteptare";
+  if (status === "APPROVED") return "Aprobat";
+  if (status === "REJECTED") return "Respins";
+  return "—";
+}
 
 /**
  * Convert "YYYY-MM-DDTHH:mm" (datetime-local) to ISO string reliably in local time.
@@ -54,6 +78,10 @@ export default function AdminExamDetailPage() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [keysByTaskId, setKeysByTaskId] = useState<Map<string, TaskKey>>(new Map());
+  const [requests, setRequests] = useState<ExamRequest[]>([]);
+  const [access, setAccess] = useState<ExamAccess[]>([]);
+  const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+  const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
 
   const [loading, setLoading] = useState(true);
   const [savingExam, setSavingExam] = useState(false);
@@ -120,6 +148,59 @@ export default function AdminExamDetailPage() {
       if (tid && taskIds.has(tid)) m.set(tid, k);
     }
     setKeysByTaskId(m);
+
+    const [requestsRes, accessRes, attemptsRes] = await Promise.all([
+      client.models.ExamRequest.list({
+        filter: { examId: { eq: examId } },
+        limit: 2000,
+      }),
+      client.models.ExamAccess.list({
+        filter: { examId: { eq: examId } },
+        limit: 2000,
+      }),
+      client.models.ExamAttempt.list({
+        filter: { examId: { eq: examId } },
+        limit: 2000,
+      }),
+    ]);
+
+    if (requestsRes.errors?.length) console.error(requestsRes.errors);
+    if (accessRes.errors?.length) console.error(accessRes.errors);
+    if (attemptsRes.errors?.length) console.error(attemptsRes.errors);
+
+    const nextRequests = (requestsRes.data ?? []).filter(notNull);
+    const nextAccess = (accessRes.data ?? []).filter(notNull);
+    const nextAttempts = (attemptsRes.data ?? []).filter(notNull);
+
+    setRequests(nextRequests);
+    setAccess(nextAccess);
+    setAttempts(nextAttempts);
+
+    const ownerIds = Array.from(
+      new Set(
+        [
+          ...nextRequests.map((request) => request.owner),
+          ...nextAccess.map((entry) => entry.owner),
+          ...nextAttempts.map((attempt) => attempt.userId),
+        ].filter((owner): owner is string => Boolean(owner))
+      )
+    );
+
+    const profileResults = await Promise.all(
+      ownerIds.map(async (ownerId) => {
+        const res = await client.models.UserProfile.get({ id: ownerId });
+        if (res.errors?.length) {
+          console.error(`UserProfile.get failed for ${ownerId}:`, res.errors);
+        }
+        return [ownerId, res.data ?? null] as const;
+      })
+    );
+
+    const profileMap = new Map<string, Profile>();
+    for (const [ownerId, profile] of profileResults) {
+      if (profile) profileMap.set(ownerId, profile);
+    }
+    setProfilesByOwner(profileMap);
 
     setLoading(false);
   }
@@ -310,6 +391,48 @@ export default function AdminExamDetailPage() {
     });
   }
 
+  const participantRows = useMemo(() => {
+    const owners = new Set<string>();
+    for (const request of requests) {
+      if (request.owner) owners.add(request.owner);
+    }
+    for (const entry of access) {
+      if (entry.owner) owners.add(entry.owner);
+    }
+    for (const attempt of attempts) {
+      if (attempt.userId) owners.add(attempt.userId);
+    }
+
+    return Array.from(owners)
+      .map((owner) => {
+        const request = requests.find((entry) => entry.owner === owner) ?? null;
+        const accessEntry = access.find((entry) => entry.owner === owner) ?? null;
+        const ownerAttempts = attempts
+          .filter((attempt) => attempt.userId === owner)
+          .slice()
+          .sort(
+            (a, b) =>
+              new Date(b.submittedAt ?? b.startedAt ?? 0).getTime() -
+              new Date(a.submittedAt ?? a.startedAt ?? 0).getTime()
+          );
+        const latestAttempt = ownerAttempts[0] ?? null;
+
+        return {
+          owner,
+          request,
+          access: accessEntry,
+          attempts: ownerAttempts,
+          latestAttempt,
+          sortMs: Math.max(
+            new Date(request?.requestedAt ?? 0).getTime(),
+            new Date(accessEntry?.grantedAt ?? 0).getTime(),
+            new Date(latestAttempt?.submittedAt ?? latestAttempt?.startedAt ?? 0).getTime()
+          ),
+        };
+      })
+      .sort((a, b) => b.sortMs - a.sortMs);
+  }, [access, attempts, requests]);
+
   return (
     <>
       <SiteHeader rightSlot={<HeaderUserActions />} />
@@ -384,6 +507,71 @@ export default function AdminExamDetailPage() {
                 <div className="small" style={{ opacity: 0.75 }}>
                   Sfat: ora de start folosește fusul tău orar local la editare.
                 </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="section-title">Participanți și cereri</div>
+              <div className="page-subtitle" style={{ marginTop: 6 }}>
+                Elevii care au cerut acces, au fost aprobați sau au trimis această simulare.
+              </div>
+
+              <div className="metric-grid">
+                <div className="metric-tile soft-mint">
+                  <div className="metric-label">Aprobați</div>
+                  <div className="metric-value">{access.length}</div>
+                  <div className="metric-helper">au acces la simulare</div>
+                </div>
+                <div className="metric-tile soft-lilac">
+                  <div className="metric-label">Cereri în așteptare</div>
+                  <div className="metric-value">
+                    {requests.filter((request) => request.status === "PENDING").length}
+                  </div>
+                  <div className="metric-helper">neprocesate încă</div>
+                </div>
+                <div className="metric-tile">
+                  <div className="metric-label">Cereri respinse</div>
+                  <div className="metric-value">
+                    {requests.filter((request) => request.status === "REJECTED").length}
+                  </div>
+                  <div className="metric-helper">istoric pentru acest test</div>
+                </div>
+                <div className="metric-tile soft-blue">
+                  <div className="metric-label">Trimiteri</div>
+                  <div className="metric-value">{attempts.length}</div>
+                  <div className="metric-helper">încercări finalizate</div>
+                </div>
+              </div>
+
+              <div className="exam-list" style={{ marginTop: 14 }}>
+                {participantRows.length === 0 ? (
+                  <p className="small" style={{ margin: 0 }}>
+                    Nu există încă participanți sau cereri pentru această simulare.
+                  </p>
+                ) : (
+                  participantRows.map((row) => (
+                    <div key={row.owner} className="exam-item">
+                      <div className="exam-item-title">
+                        {formatRequester(row.owner, profilesByOwner)}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Cerere: {requestStatusLabel(row.request?.status)}{" "}
+                        {row.request?.requestedAt ? `• ${formatWhen(row.request.requestedAt)}` : ""}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Acces: {row.access ? `aprobat la ${formatWhen(row.access.grantedAt)}` : "neaprobat"}
+                      </div>
+                      <div className="small" style={{ opacity: 0.85 }}>
+                        Trimiteri: {row.attempts.length}
+                        {row.latestAttempt
+                          ? ` • Ultima: ${row.latestAttempt.score ?? "—"}/${
+                              row.latestAttempt.maxScore ?? "—"
+                            } la ${formatWhen(row.latestAttempt.submittedAt)}`
+                          : ""}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
 
