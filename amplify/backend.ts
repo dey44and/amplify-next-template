@@ -18,6 +18,7 @@ import {
   decideBacRequestFn,
   getBacSimulationContentFn,
   submitBacSubmissionFn,
+  listAdminUsersFn,
 } from "./data/resource.js";
 
 const backend = defineBackend({
@@ -38,6 +39,7 @@ const backend = defineBackend({
   decideBacRequestFn,
   getBacSimulationContentFn,
   submitBacSubmissionFn,
+  listAdminUsersFn,
 });
 
 // Allow these lambdas to call the Amplify Data (AppSync GraphQL) API using IAM
@@ -60,6 +62,7 @@ backend.requestBacAccessFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.decideBacRequestFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.getBacSimulationContentFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitBacSubmissionFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.listAdminUsersFn.resources.lambda.addToRolePolicy(allowGraphQL);
 
 backend.requestBacAccessFn.resources.cfnResources.cfnFunction.addPropertyOverride(
   "Environment.Variables.AUTH_USER_POOL_ID",
@@ -68,6 +71,17 @@ backend.requestBacAccessFn.resources.cfnResources.cfnFunction.addPropertyOverrid
 backend.requestBacAccessFn.resources.lambda.addToRolePolicy(
   new PolicyStatement({
     actions: ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers"],
+    resources: [backend.auth.resources.userPool.userPoolArn],
+  })
+);
+
+backend.listAdminUsersFn.resources.cfnResources.cfnFunction.addPropertyOverride(
+  "Environment.Variables.AUTH_USER_POOL_ID",
+  backend.auth.resources.userPool.userPoolId
+);
+backend.listAdminUsersFn.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["cognito-idp:ListUsers"],
     resources: [backend.auth.resources.userPool.userPoolArn],
   })
 );

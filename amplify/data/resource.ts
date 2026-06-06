@@ -65,6 +65,11 @@ export const submitBacSubmissionFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const listAdminUsersFn = defineFunction({
+  entry: "./exam-ops/listAdminUsers.ts",
+  resourceGroupName: "data",
+});
+
 const schema = a.schema({
   UserProfile: a
     .model({
@@ -453,6 +458,16 @@ const schema = a.schema({
     mark: a.float(),
   }),
 
+  AdminUserAccount: a.customType({
+    owner: a.string().required(),
+    email: a.email(),
+    username: a.string(),
+    enabled: a.boolean(),
+    status: a.string(),
+    createdAt: a.datetime(),
+    updatedAt: a.datetime(),
+  }),
+
   // Custom query: students call this, function checks ExamAccess
   listTasksForExam: a
     .query()
@@ -569,6 +584,12 @@ const schema = a.schema({
     .returns(a.ref("BacSubmission"))
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(submitBacSubmissionFn)),
+
+  listAdminUsers: a
+    .query()
+    .returns(a.ref("AdminUserAccount").array())
+    .authorization((allow) => [allow.group("Admin")])
+    .handler(a.handler.function(listAdminUsersFn)),
 })
 .authorization((allow) => [
   allow.resource(listTasksForExamFn).to(["query"]),
@@ -583,6 +604,7 @@ const schema = a.schema({
   allow.resource(decideBacRequestFn).to(["query", "mutate"]),
   allow.resource(getBacSimulationContentFn).to(["query"]),
   allow.resource(submitBacSubmissionFn).to(["query", "mutate"]),
+  allow.resource(listAdminUsersFn).to(["query"]),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;

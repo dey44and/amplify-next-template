@@ -26,6 +26,7 @@ type BacRequest = Schema["BacRequest"]["type"];
 type BacAccess = Schema["BacAccess"]["type"];
 type BacSubmission = Schema["BacSubmission"]["type"];
 type BacEvaluation = Schema["BacEvaluation"]["type"];
+type AdminUserAccount = Schema["AdminUserAccount"]["type"];
 
 type PersonRow = {
   owner: string;
@@ -39,6 +40,7 @@ type PersonRow = {
   bacAccess: BacAccess[];
   bacSubmissions: BacSubmission[];
   bacEvaluations: BacEvaluation[];
+  account: AdminUserAccount | null;
   lastActivityMs: number;
 };
 
@@ -84,6 +86,8 @@ export default function AdminPeoplePage() {
   const [bacAccess, setBacAccess] = useState<BacAccess[]>([]);
   const [bacSubmissions, setBacSubmissions] = useState<BacSubmission[]>([]);
   const [bacEvaluations, setBacEvaluations] = useState<BacEvaluation[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUserAccount[]>([]);
+  const [adminUsersAvailable, setAdminUsersAvailable] = useState(true);
   const [bacBackendAvailable, setBacBackendAvailable] = useState(true);
 
   async function refresh() {
@@ -106,6 +110,20 @@ export default function AdminPeoplePage() {
       client.models.ExamAttempt.list({ limit: 2000 }),
     ]);
 
+    let adminUsersRes: Awaited<ReturnType<typeof client.queries.listAdminUsers>> | null = null;
+    try {
+      const maybeListAdminUsers = (client.queries as Record<string, unknown>).listAdminUsers;
+      if (typeof maybeListAdminUsers === "function") {
+        adminUsersRes = await client.queries.listAdminUsers();
+        setAdminUsersAvailable(true);
+      } else {
+        setAdminUsersAvailable(false);
+      }
+    } catch (error) {
+      console.error("listAdminUsers failed:", error);
+      setAdminUsersAvailable(false);
+    }
+
     const [bacSimulationRes, bacRequestRes, bacAccessRes, bacSubmissionRes, bacEvaluationRes] =
       canLoadBac
         ? await Promise.all([
@@ -127,6 +145,10 @@ export default function AdminPeoplePage() {
     if (bacAccessRes?.errors?.length) console.error(bacAccessRes.errors);
     if (bacSubmissionRes?.errors?.length) console.error(bacSubmissionRes.errors);
     if (bacEvaluationRes?.errors?.length) console.error(bacEvaluationRes.errors);
+    if (adminUsersRes?.errors?.length) {
+      console.error(adminUsersRes.errors);
+      setAdminUsersAvailable(false);
+    }
 
     setProfiles((profileRes.data ?? []).filter(notNull));
     setExams((examRes.data ?? []).filter(notNull));
@@ -138,6 +160,7 @@ export default function AdminPeoplePage() {
     setBacAccess((bacAccessRes?.data ?? []).filter(notNull));
     setBacSubmissions((bacSubmissionRes?.data ?? []).filter(notNull));
     setBacEvaluations((bacEvaluationRes?.data ?? []).filter(notNull));
+    setAdminUsers((adminUsersRes?.data ?? []).filter(notNull));
 
     setLoading(false);
   }
@@ -156,6 +179,14 @@ export default function AdminPeoplePage() {
     }
     return map;
   }, [profiles]);
+
+  const adminUsersByOwner = useMemo(() => {
+    const map = new Map<string, AdminUserAccount>();
+    for (const user of adminUsers) {
+      if (user.owner) map.set(user.owner, user);
+    }
+    return map;
+  }, [adminUsers]);
 
   const examTitleById = useMemo(() => {
     const map = new Map<string, string>();
@@ -196,10 +227,14 @@ export default function AdminPeoplePage() {
     for (const evaluation of bacEvaluations) {
       if (evaluation.submissionOwner) owners.add(evaluation.submissionOwner);
     }
+    for (const user of adminUsers) {
+      if (user.owner) owners.add(user.owner);
+    }
 
     return Array.from(owners)
       .map((owner) => {
         const profile = profilesByOwner.get(owner) ?? null;
+        const account = adminUsersByOwner.get(owner) ?? null;
         const ownerExamRequests = examRequests.filter((request) => request.owner === owner);
         const ownerExamAccess = examAccess.filter((access) => access.owner === owner);
         const ownerExamAttempts = examAttempts.filter((attempt) => attempt.userId === owner);
@@ -210,9 +245,12 @@ export default function AdminPeoplePage() {
           (evaluation) => evaluation.submissionOwner === owner
         );
         const email =
-          ownerBacRequests.find((request) => request.requesterEmail)?.requesterEmail ?? null;
+          account?.email ??
+          ownerBacRequests.find((request) => request.requesterEmail)?.requesterEmail ??
+          null;
 
         const lastActivityMs = latestTimestamp([
+          account?.updatedAt ?? account?.createdAt,
           ...ownerExamRequests.map((request) => request.requestedAt),
           ...ownerExamAccess.map((access) => access.grantedAt),
           ...ownerExamAttempts.map((attempt) => attempt.submittedAt ?? attempt.startedAt),
@@ -234,6 +272,7 @@ export default function AdminPeoplePage() {
           bacAccess: ownerBacAccess,
           bacSubmissions: ownerBacSubmissions,
           bacEvaluations: ownerBacEvaluations,
+          account,
           lastActivityMs,
         };
       })
@@ -246,6 +285,8 @@ export default function AdminPeoplePage() {
     bacEvaluations,
     bacRequests,
     bacSubmissions,
+    adminUsers,
+    adminUsersByOwner,
     examAccess,
     examAttempts,
     examRequests,
@@ -265,6 +306,7 @@ export default function AdminPeoplePage() {
         person.email ?? "",
         profile?.county ?? "",
         profile?.highSchool ?? "",
+        person.account?.username ?? "",
       ]
         .join(" ")
         .toLowerCase();
@@ -316,6 +358,12 @@ export default function AdminPeoplePage() {
                 modelele Bac. Datele de admitere rămân disponibile.
               </div>
             ) : null}
+            {!adminUsersAvailable ? (
+              <div className="small" style={{ marginTop: 8, color: "#8a5b00" }}>
+                Emailurile conturilor nu pot fi încărcate încă. Deployează backendul actualizat și
+                regenerează <code>amplify_outputs.json</code>.
+              </div>
+            ) : null}
             <div style={{ marginTop: 12, maxWidth: 680 }}>
               <input
                 className="field-input"
@@ -342,9 +390,9 @@ export default function AdminPeoplePage() {
                 <div className="metric-helper">participări aprobate</div>
               </div>
               <div className="metric-tile">
-                <div className="metric-label">Lucrări Bac</div>
-                <div className="metric-value">{bacSubmissions.length}</div>
-                <div className="metric-helper">documente încărcate</div>
+                <div className="metric-label">Conturi</div>
+                <div className="metric-value">{adminUsers.length}</div>
+                <div className="metric-helper">utilizatori Cognito</div>
               </div>
             </div>
           </Card>
@@ -417,7 +465,11 @@ export default function AdminPeoplePage() {
                       ID complet: {selectedPerson.owner}
                     </div>
                     <div className="small" style={{ marginTop: 4 }}>
-                      Email Bac: {selectedPerson.email ?? "nu este disponibil"}
+                      Email: {selectedPerson.email ?? "nu este disponibil"}
+                    </div>
+                    <div className="small" style={{ marginTop: 4 }}>
+                      Cont: {selectedPerson.account?.username ?? "—"} •{" "}
+                      {selectedPerson.account?.status ?? "status indisponibil"}
                     </div>
                   </div>
 
@@ -455,6 +507,11 @@ export default function AdminPeoplePage() {
                     <div className="small">Județ: {selectedPerson.profile?.county ?? "—"}</div>
                     <div className="small">Vârstă: {selectedPerson.profile?.age ?? "—"}</div>
                     <div className="small">Liceu: {selectedPerson.profile?.highSchool ?? "—"}</div>
+                    <div className="small">Email cont: {selectedPerson.email ?? "—"}</div>
+                    <div className="small">
+                      Creat: {formatWhen(selectedPerson.account?.createdAt)} • Actualizat:{" "}
+                      {formatWhen(selectedPerson.account?.updatedAt)}
+                    </div>
                   </div>
 
                   <div className="exam-item">
