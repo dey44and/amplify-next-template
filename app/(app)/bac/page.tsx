@@ -36,6 +36,13 @@ function getBacWindow(simulation: BacSimulation) {
   return { startMs, startWindowMinutes, startWindowEndMs };
 }
 
+function formatLatestStartAt(simulation: BacSimulation) {
+  const { startWindowEndMs } = getBacWindow(simulation);
+  return Number.isFinite(startWindowEndMs)
+    ? formatWhen(new Date(startWindowEndMs).toISOString())
+    : formatWhen(null);
+}
+
 function getRequestWindowClosed(simulation: BacSimulation, nowMs: number) {
   const { startWindowMinutes, startWindowEndMs } = getBacWindow(simulation);
 
@@ -349,8 +356,8 @@ export default function BacPage() {
                         <div className="exam-item-title">{simulation.title}</div>
                         <div className="small">Materie: {simulation.subject}</div>
                         <div className="small" style={{ opacity: 0.85 }}>
-                          Începe: {formatWhen(simulation.startAt)} • Fereastră start:{" "}
-                          {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru:{" "}
+                          Începe: {formatWhen(simulation.startAt)} • Poți începe cel târziu la:{" "}
+                          {formatLatestStartAt(simulation)} • Timp de lucru:{" "}
                           {simulation.durationMinutes ?? "—"} min
                         </div>
                         {accessRow?.startedAt ? (

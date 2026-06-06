@@ -41,6 +41,13 @@ function getBacWindow(simulation?: BacSimulation | null) {
   return { startMs, startWindowMinutes, startWindowEndMs };
 }
 
+function formatLatestStartAt(simulation?: BacSimulation | null) {
+  const { startWindowEndMs } = getBacWindow(simulation);
+  return Number.isFinite(startWindowEndMs)
+    ? formatWhen(new Date(startWindowEndMs).toISOString())
+    : formatWhen(null);
+}
+
 function formatRemaining(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "00:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -418,8 +425,8 @@ export default function BacSimulationPage() {
                 <div className="bac-kicker">{simulation.subject}</div>
                 <div className="bac-title">{simulation.title}</div>
                 <div className="bac-subtitle">
-                  {formatWhen(simulation.startAt)} • Fereastră start{" "}
-                  {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru{" "}
+                  {formatWhen(simulation.startAt)} • Poți începe cel târziu la:{" "}
+                  {formatLatestStartAt(simulation)} • Timp de lucru{" "}
                   {simulation.durationMinutes ?? "—"} min •{" "}
                   Max {simulation.maxGrade ?? 10}
                 </div>
@@ -432,8 +439,8 @@ export default function BacSimulationPage() {
             <Card className="bac-card">
               <div className="section-title">Detalii simulare</div>
               <div className="small" style={{ marginTop: 8 }}>
-                Materie: {simulation.subject} • Începe: {formatWhen(simulation.startAt)} • Fereastră start:{" "}
-                {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru:{" "}
+                Materie: {simulation.subject} • Începe: {formatWhen(simulation.startAt)} • Poți începe cel târziu la:{" "}
+                {formatLatestStartAt(simulation)} • Timp de lucru:{" "}
                 {simulation.durationMinutes ?? "—"} min • Punctaj maxim:{" "}
                 {simulation.maxGrade ?? 10}
               </div>
