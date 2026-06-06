@@ -11,6 +11,7 @@ import {
   submitExamAttemptFn,
   getExamReviewFn,
   getAdmissionPerformanceFn,
+  getBacPerformanceFn,
   listArchiveProblemsFn,
   recommendAdaptiveTaskFn,
   submitPracticeAnswerFn,
@@ -32,6 +33,7 @@ const backend = defineBackend({
   submitExamAttemptFn,
   getExamReviewFn,
   getAdmissionPerformanceFn,
+  getBacPerformanceFn,
   listArchiveProblemsFn,
   recommendAdaptiveTaskFn,
   submitPracticeAnswerFn,
@@ -55,6 +57,7 @@ backend.decideExamRequestFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitExamAttemptFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.getExamReviewFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.getAdmissionPerformanceFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.getBacPerformanceFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.listArchiveProblemsFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.recommendAdaptiveTaskFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitPracticeAnswerFn.resources.lambda.addToRolePolicy(allowGraphQL);

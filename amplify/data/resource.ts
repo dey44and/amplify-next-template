@@ -26,6 +26,11 @@ export const getAdmissionPerformanceFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const getBacPerformanceFn = defineFunction({
+  entry: "./exam-ops/getBacPerformance.ts",
+  resourceGroupName: "data",
+});
+
 export const listArchiveProblemsFn = defineFunction({
   entry: "./exam-ops/listArchiveProblems.ts",
   resourceGroupName: "data",
@@ -414,6 +419,24 @@ const schema = a.schema({
     points: a.ref("PerformancePoint").array(),
   }),
 
+  BacPerformancePoint: a.customType({
+    bucketStart: a.datetime(),
+    userAvgPercent: a.float(),
+    userCount: a.integer(),
+    cohortMedianPercent: a.float(),
+    cohortMinPercent: a.float(),
+    cohortMaxPercent: a.float(),
+    cohortCount: a.integer(),
+  }),
+
+  BacPerformance: a.customType({
+    subject: a.string(),
+    userTotalCount: a.integer(),
+    cohortTotalCount: a.integer(),
+    minCohortSample: a.integer(),
+    points: a.ref("BacPerformancePoint").array(),
+  }),
+
   ArchiveProblem: a.customType({
     taskId: a.id().required(),
     examId: a.id(),
@@ -522,6 +545,15 @@ const schema = a.schema({
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(getAdmissionPerformanceFn)),
 
+  getBacPerformance: a
+    .query()
+    .arguments({
+      subject: a.string(),
+    })
+    .returns(a.ref("BacPerformance"))
+    .authorization((allow) => [allow.authenticated()])
+    .handler(a.handler.function(getBacPerformanceFn)),
+
   listArchiveProblems: a
     .query()
     .returns(a.ref("ArchiveProblem").array())
@@ -603,6 +635,7 @@ const schema = a.schema({
   allow.resource(submitExamAttemptFn).to(["query", "mutate"]),
   allow.resource(getExamReviewFn).to(["query"]),
   allow.resource(getAdmissionPerformanceFn).to(["query"]),
+  allow.resource(getBacPerformanceFn).to(["query"]),
   allow.resource(listArchiveProblemsFn).to(["query"]),
   allow.resource(recommendAdaptiveTaskFn).to(["query"]),
   allow.resource(submitPracticeAnswerFn).to(["query", "mutate"]),

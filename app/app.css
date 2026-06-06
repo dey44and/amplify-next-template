@@ -340,6 +340,38 @@ button:focus-visible {
   background: linear-gradient(180deg, #ffffff, #f4f8ff);
 }
 
+.stats-mode-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid #c8d5e7;
+  border-radius: 14px;
+  background: #f4f8ff;
+  padding: 4px;
+}
+
+.stats-mode-button {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stats-mode-button.is-active {
+  background: #ffffff;
+  color: var(--fg);
+  box-shadow: 0 6px 18px rgba(28, 59, 112, 0.10);
+}
+
+.stats-mode-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .stats-plots-grid {
   margin-top: 14px;
   display: grid;
@@ -406,8 +438,75 @@ button:focus-visible {
   stroke-width: 2.2;
 }
 
+.plot-line-median {
+  fill: none;
+  stroke: #20a47d;
+  stroke-width: 2.4;
+}
+
+.plot-line-max {
+  fill: none;
+  stroke: #2f67ff;
+  stroke-width: 1.9;
+}
+
+.plot-line-min {
+  fill: none;
+  stroke: #e36b3b;
+  stroke-width: 1.9;
+}
+
 .plot-point {
   opacity: 0.95;
+}
+
+.plot-point-median {
+  fill: #20a47d;
+  opacity: 0.95;
+}
+
+.plot-point-max {
+  fill: #2f67ff;
+  opacity: 0.9;
+}
+
+.plot-point-min {
+  fill: #e36b3b;
+  opacity: 0.9;
+}
+
+.plot-range-legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: calc(11px * var(--content-type-scale));
+  color: var(--muted);
+}
+
+.plot-range-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.plot-range-legend span::before {
+  content: "";
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.legend-median {
+  color: #20a47d;
+}
+
+.legend-max {
+  color: #2f67ff;
+}
+
+.legend-min {
+  color: #e36b3b;
 }
 
 .plot-axis-row {
