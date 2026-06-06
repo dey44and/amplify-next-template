@@ -400,7 +400,8 @@ export default function AdminBacDetailPage() {
             <Card className="bac-card">
               <div className="section-title">Detalii</div>
               <div className="small" style={{ marginTop: 8 }}>
-                Materie: {simulation.subject} • Începe: {formatWhen(simulation.startAt)} • Durată:{" "}
+                Materie: {simulation.subject} • Începe: {formatWhen(simulation.startAt)} • Fereastră start:{" "}
+                {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru:{" "}
                 {simulation.durationMinutes ?? "—"} min • Max: {simulation.maxGrade ?? 10}
               </div>
 
@@ -471,6 +472,12 @@ export default function AdminBacDetailPage() {
                       <div className="small" style={{ opacity: 0.85 }}>
                         Acces: {row.access ? `aprobat la ${formatWhen(row.access.grantedAt)}` : "neaprobat"}
                       </div>
+                      {row.access ? (
+                        <div className="small" style={{ opacity: 0.85 }}>
+                          Start elev: {formatWhen(row.access.startedAt)} • Deadline:{" "}
+                          {formatWhen(row.access.deadlineAt)}
+                        </div>
+                      ) : null}
                       <div className="small" style={{ opacity: 0.85 }}>
                         Lucrare:{" "}
                         {row.submission

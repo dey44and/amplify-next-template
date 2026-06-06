@@ -18,11 +18,14 @@ Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>({ authMode: "iam" });
 const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION });
 
-const REQUEST_GRACE_MS = 15 * 60_000;
-
 function parseIsoMs(iso?: string | null) {
   if (!iso) return Number.NaN;
   return new Date(iso).getTime();
+}
+
+function getPositiveMinutes(value: unknown, fallback?: unknown) {
+  const minutes = Number(value ?? fallback ?? 0);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : Number.NaN;
 }
 
 function getAttribute(attributes: AttributeType[] | undefined, name: string) {
@@ -89,16 +92,19 @@ export const handler: Schema["requestBacAccess"]["functionHandler"] = async (eve
   if (!simulation) throw new Error("BAC_SIMULATION_NOT_FOUND");
 
   const startMs = parseIsoMs(simulation.startAt);
-  const durationMinutes = Number(simulation.durationMinutes ?? 0);
+  const accessWindowMinutes = getPositiveMinutes(
+    simulation.accessWindowMinutes,
+    simulation.durationMinutes
+  );
   const endMs =
-    Number.isFinite(startMs) && Number.isFinite(durationMinutes)
-      ? startMs + durationMinutes * 60_000
+    Number.isFinite(startMs) && Number.isFinite(accessWindowMinutes)
+      ? startMs + accessWindowMinutes * 60_000
       : Number.NaN;
 
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || durationMinutes <= 0) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
     throw new Error("BAC_INVALID_WINDOW");
   }
-  if (Date.now() > endMs + REQUEST_GRACE_MS) {
+  if (Date.now() > endMs) {
     throw new Error("BAC_REQUEST_WINDOW_CLOSED");
   }
 

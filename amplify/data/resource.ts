@@ -263,6 +263,7 @@ const schema = a.schema({
       subject: a.string().required(),
       startAt: a.datetime(),
       durationMinutes: a.integer(),
+      accessWindowMinutes: a.integer(),
       maxGrade: a.float(),
     })
     .authorization((allow) => [
@@ -317,6 +318,8 @@ const schema = a.schema({
       grantedAt: a.datetime(),
       grantedBy: a.string(),
       note: a.string(),
+      startedAt: a.datetime(),
+      deadlineAt: a.datetime(),
     })
     .identifier(["owner", "simulationId"])
     .authorization((allow) => [
@@ -449,6 +452,9 @@ const schema = a.schema({
     simulationId: a.id().required(),
     instructions: a.string(),
     promptText: a.string(),
+    startedAt: a.datetime(),
+    deadlineAt: a.datetime(),
+    accessWindowEndsAt: a.datetime(),
   }),
 
   ExamTaskPublic: a.customType({
@@ -602,7 +608,7 @@ const schema = a.schema({
   allow.resource(submitPracticeAnswerFn).to(["query", "mutate"]),
   allow.resource(requestBacAccessFn).to(["query", "mutate"]),
   allow.resource(decideBacRequestFn).to(["query", "mutate"]),
-  allow.resource(getBacSimulationContentFn).to(["query"]),
+  allow.resource(getBacSimulationContentFn).to(["query", "mutate"]),
   allow.resource(submitBacSubmissionFn).to(["query", "mutate"]),
   allow.resource(listAdminUsersFn).to(["query"]),
 ]);

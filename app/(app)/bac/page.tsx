@@ -9,7 +9,6 @@ import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
 import { hasBacModels } from "@/lib/amplifyModelAvailability";
 import { formatWhen, toTimestamp } from "@/lib/dateTime";
-import { getExamState } from "@/lib/examWindow";
 import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
@@ -24,17 +23,27 @@ type BacAccess = Schema["BacAccess"]["type"];
 type BacSubmission = Schema["BacSubmission"]["type"];
 type BacEvaluation = Schema["BacEvaluation"]["type"];
 
-const REQUEST_GRACE_MS = 15 * 60_000;
+const SUBMIT_GRACE_MS = 15 * 60_000;
 
-function getRequestWindowClosed(simulation: BacSimulation, nowMs: number) {
+function getBacWindow(simulation: BacSimulation) {
   const startMs = simulation.startAt ? toTimestamp(simulation.startAt) : Number.NaN;
-  const durationMinutes = Number(simulation.durationMinutes ?? 0);
-  const endMs =
-    Number.isFinite(startMs) && Number.isFinite(durationMinutes)
-      ? startMs + durationMinutes * 60_000
+  const startWindowMinutes = Number(simulation.accessWindowMinutes ?? simulation.durationMinutes ?? 0);
+  const startWindowEndMs =
+    Number.isFinite(startMs) && Number.isFinite(startWindowMinutes)
+      ? startMs + startWindowMinutes * 60_000
       : Number.NaN;
 
-  return !Number.isFinite(endMs) || durationMinutes <= 0 || nowMs > endMs + REQUEST_GRACE_MS;
+  return { startMs, startWindowMinutes, startWindowEndMs };
+}
+
+function getRequestWindowClosed(simulation: BacSimulation, nowMs: number) {
+  const { startWindowMinutes, startWindowEndMs } = getBacWindow(simulation);
+
+  return (
+    !Number.isFinite(startWindowEndMs) ||
+    startWindowMinutes <= 0 ||
+    nowMs > startWindowEndMs
+  );
 }
 
 function statusLabel(args: {
@@ -59,11 +68,21 @@ function statusLabel(args: {
   if (evaluation?.status === "RETURNED") return "Returnat";
   if (submission) return "Trimis";
 
-  const state = getExamState(simulation, nowMs);
-  if (state === "before") return "Programat";
-  if (state === "during") return "Deschis";
-  if (state === "after") return "Încheiat";
-  return "Program indisponibil";
+  const { startMs, startWindowEndMs } = getBacWindow(simulation);
+  const startedMs = toTimestamp(access.startedAt);
+  const deadlineMs = toTimestamp(access.deadlineAt);
+
+  if (Number.isFinite(startedMs) && Number.isFinite(deadlineMs)) {
+    if (nowMs <= deadlineMs + SUBMIT_GRACE_MS) return "În lucru";
+    return "Încheiat";
+  }
+
+  if (!Number.isFinite(startMs) || !Number.isFinite(startWindowEndMs)) {
+    return "Program indisponibil";
+  }
+  if (nowMs < startMs) return "Programat";
+  if (nowMs <= startWindowEndMs) return "Poți începe";
+  return "Fereastră închisă";
 }
 
 export default function BacPage() {
@@ -270,7 +289,7 @@ export default function BacPage() {
 
       <PageShell>
         {loading ? (
-          <p className="small">Se încarcă simulările Bac…</p>
+          <p className="small">Se încarcă simulările de Bac…</p>
         ) : (
           <div className="panel-stack bac-page">
             <section className="bac-hero">
@@ -278,12 +297,12 @@ export default function BacPage() {
                 <div className="bac-kicker">Bacalaureat</div>
                 <div className="bac-title">Simulări Bac</div>
                 <div className="bac-subtitle">
-                  Subiecte scrise, soluții încărcate ca document și evaluare manuală.
+                  Subiecte scrise, soluții încărcate ca document PDF și evaluare detaliată.
                 </div>
               </div>
               <div className="panel-actions">
                 <OutlineButton onClick={() => router.push("/dashboard")}>
-                  Înapoi la panou
+                  Înapoi
                 </OutlineButton>
               </div>
             </section>
@@ -291,23 +310,23 @@ export default function BacPage() {
             <Card className="bac-card">
               <div className="section-title">Subiecte disponibile</div>
               <div className="page-subtitle" style={{ marginTop: 6 }}>
-                Încarcă soluția ca document unic, apoi așteaptă evaluarea manuală.
+                Încarcă soluția ca document unic, apoi așteaptă evaluarea automată.
               </div>
               {!bacBackendAvailable ? (
                 <div className="small" style={{ marginTop: 8, color: "#8a5b00" }}>
-                  Simulările Bac nu sunt disponibile momentan deoarece configurația aplicației nu
-                  include încă modelele Bac.
+                  Simulările de Bac nu sunt disponibile momentan deoarece configurația aplicației nu
+                  include încă modelele de Bac.
                 </div>
               ) : null}
 
               <div className="exam-list" style={{ marginTop: 14 }}>
                 {!bacBackendAvailable ? (
                   <p className="small" style={{ margin: 0 }}>
-                    Revino după sincronizarea backendului.
+                    Revino după sincronizarea backend-ului.
                   </p>
                 ) : sortedSimulations.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
-                    Nu există simulări Bac configurate.
+                    Nu există simulări de Bac configurate.
                   </p>
                 ) : (
                   sortedSimulations.map((simulation) => {
@@ -330,9 +349,16 @@ export default function BacPage() {
                         <div className="exam-item-title">{simulation.title}</div>
                         <div className="small">Materie: {simulation.subject}</div>
                         <div className="small" style={{ opacity: 0.85 }}>
-                          Începe: {formatWhen(simulation.startAt)} • Durată:{" "}
+                          Începe: {formatWhen(simulation.startAt)} • Fereastră start:{" "}
+                          {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru:{" "}
                           {simulation.durationMinutes ?? "—"} min
                         </div>
+                        {accessRow?.startedAt ? (
+                          <div className="small" style={{ opacity: 0.85 }}>
+                            Ai început la: {formatWhen(accessRow.startedAt)} • Deadline:{" "}
+                            {formatWhen(accessRow.deadlineAt)}
+                          </div>
+                        ) : null}
                         <div className="small" style={{ opacity: 0.85 }}>
                           Stare: {label}
                           {evaluation?.status === "GRADED"
@@ -343,7 +369,7 @@ export default function BacPage() {
                         <div className="exam-actions">
                           {accessRow ? (
                             <OutlineButton onClick={() => router.push(`/bac/${simulation.id}`)}>
-                              Deschide
+                              {submission ? "Vezi lucrarea" : accessRow.startedAt ? "Continuă" : "Deschide"}
                             </OutlineButton>
                           ) : request?.status === "PENDING" ? (
                             <>

@@ -37,6 +37,18 @@ function formatWhenRo(iso?: string | null) {
   });
 }
 
+function getPositiveMinutes(value: unknown, fallback?: unknown) {
+  const minutes = Number(value ?? fallback ?? 0);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
+}
+
+function addMinutesIso(iso: string | null | undefined, minutes: number | null) {
+  if (!iso || !minutes) return null;
+  const startMs = new Date(iso).getTime();
+  if (!Number.isFinite(startMs)) return null;
+  return new Date(startMs + minutes * 60_000).toISOString();
+}
+
 function truncateError(error: unknown) {
   const message =
     error instanceof Error ? `${error.name}: ${error.message}` : String(error ?? "");
@@ -59,6 +71,7 @@ async function sendApprovalEmail(args: {
   subject?: string | null;
   startAt?: string | null;
   durationMinutes?: number | null;
+  accessWindowMinutes?: number | null;
   note?: string | null;
 }) {
   const from = process.env.SES_FROM_EMAIL ?? "noreply@mockexams.ro";
@@ -68,7 +81,12 @@ async function sendApprovalEmail(args: {
   const safeTitle = escapeHtml(args.title);
   const safeSubject = escapeHtml(args.subject ?? "-");
   const safeStart = escapeHtml(formatWhenRo(args.startAt));
-  const safeDuration = escapeHtml(args.durationMinutes ?? "-");
+  const solveDurationMinutes = getPositiveMinutes(args.durationMinutes);
+  const accessWindowMinutes = getPositiveMinutes(args.accessWindowMinutes, args.durationMinutes);
+  const windowEndAt = addMinutesIso(args.startAt, accessWindowMinutes);
+  const safeWindowEnd = escapeHtml(formatWhenRo(windowEndAt));
+  const safeSolveDuration = escapeHtml(solveDurationMinutes ?? "-");
+  const safeAccessWindow = escapeHtml(accessWindowMinutes ?? "-");
   const safeNote = args.note ? escapeHtml(args.note) : "";
   const safeUrl = escapeHtml(url);
 
@@ -77,7 +95,9 @@ async function sendApprovalEmail(args: {
     `Titlu: ${args.title}`,
     `Materie: ${args.subject ?? "-"}`,
     `Începe: ${formatWhenRo(args.startAt)}`,
-    `Durată: ${args.durationMinutes ?? "-"} minute`,
+    `Poți începe până la: ${formatWhenRo(windowEndAt)}`,
+    `Fereastră de începere: ${accessWindowMinutes ?? "-"} minute`,
+    `Timp de lucru după începere: ${solveDurationMinutes ?? "-"} minute`,
     args.note ? `Notă administrator: ${args.note}` : null,
     `Link: ${url}`,
   ].filter(Boolean);
@@ -115,13 +135,15 @@ async function sendApprovalEmail(args: {
 
             <div style="margin:0 0 24px;border:1px solid #e7ebf3;border-radius:14px;overflow:hidden;">
               <div style="padding:13px 16px;background:#f8fafc;font-size:13px;font-weight:800;color:#334155;">Detalii simulare</div>
-              <div style="padding:14px 16px;">
-                <div style="margin-bottom:10px;font-size:15px;"><strong>Titlu:</strong> ${safeTitle}</div>
-                <div style="margin-bottom:10px;font-size:15px;"><strong>Materie:</strong> ${safeSubject}</div>
-                <div style="margin-bottom:10px;font-size:15px;"><strong>Începe:</strong> ${safeStart}</div>
-                <div style="font-size:15px;"><strong>Durată:</strong> ${safeDuration} minute</div>
-                ${safeNote ? `<div style="margin-top:10px;font-size:15px;"><strong>Notă administrator:</strong> ${safeNote}</div>` : ""}
-              </div>
+	              <div style="padding:14px 16px;">
+	                <div style="margin-bottom:10px;font-size:15px;"><strong>Titlu:</strong> ${safeTitle}</div>
+	                <div style="margin-bottom:10px;font-size:15px;"><strong>Materie:</strong> ${safeSubject}</div>
+	                <div style="margin-bottom:10px;font-size:15px;"><strong>Începe:</strong> ${safeStart}</div>
+	                <div style="margin-bottom:10px;font-size:15px;"><strong>Poți începe până la:</strong> ${safeWindowEnd}</div>
+	                <div style="margin-bottom:10px;font-size:15px;"><strong>Fereastră de începere:</strong> ${safeAccessWindow} minute</div>
+	                <div style="font-size:15px;"><strong>Timp de lucru:</strong> ${safeSolveDuration} minute din momentul începerii</div>
+	                ${safeNote ? `<div style="margin-top:10px;font-size:15px;"><strong>Notă administrator:</strong> ${safeNote}</div>` : ""}
+	              </div>
             </div>
 
             <div style="text-align:center;margin:26px 0 24px;">
@@ -131,8 +153,8 @@ async function sendApprovalEmail(args: {
             </div>
 
             <p style="margin:0 0 22px;font-size:14px;color:#526173;">
-              Subiectul va fi disponibil în platformă conform programării.
-            </p>
+	              Subiectul va fi disponibil după ce începi simularea în platformă. Cronometrul personal pornește atunci.
+	            </p>
           </div>
 
           <div style="padding:22px 30px 26px;text-align:center;border-top:1px solid #eef1f6;">
@@ -215,6 +237,7 @@ export const handler: Schema["decideBacRequest"]["functionHandler"] = async (eve
           subject: simulation.subject,
           startAt: simulation.startAt,
           durationMinutes: simulation.durationMinutes,
+          accessWindowMinutes: simulation.accessWindowMinutes,
           note: cleanNote,
         });
         emailSentAt = new Date().toISOString();

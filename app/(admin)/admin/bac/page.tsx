@@ -26,6 +26,7 @@ type BacSimulationForm = {
   subject: string;
   startAt: string;
   durationMinutes: string;
+  accessWindowMinutes: string;
   maxGrade: string;
   instructions: string;
   promptText: string;
@@ -36,6 +37,7 @@ const emptyForm: BacSimulationForm = {
   subject: "",
   startAt: "",
   durationMinutes: "",
+  accessWindowMinutes: "",
   maxGrade: "10",
   instructions: "",
   promptText: "",
@@ -121,6 +123,12 @@ export default function AdminBacPage() {
       startAt: isoToLocalDatetime(simulation.startAt),
       durationMinutes:
         simulation.durationMinutes != null ? String(simulation.durationMinutes) : "",
+      accessWindowMinutes:
+        simulation.accessWindowMinutes != null
+          ? String(simulation.accessWindowMinutes)
+          : simulation.durationMinutes != null
+          ? String(simulation.durationMinutes)
+          : "",
       maxGrade: simulation.maxGrade != null ? String(simulation.maxGrade) : "10",
       instructions: "",
       promptText: "",
@@ -154,6 +162,8 @@ export default function AdminBacPage() {
     const subject = form.subject.trim();
     const startAtLocal = form.startAt.trim();
     const duration = Number(form.durationMinutes);
+    const accessWindowText = form.accessWindowMinutes.trim();
+    const accessWindow = accessWindowText ? Number(accessWindowText) : duration;
     const maxGrade = Number(form.maxGrade || 10);
 
     if (!title || !subject || !startAtLocal || !form.durationMinutes.trim()) {
@@ -161,7 +171,11 @@ export default function AdminBacPage() {
       return;
     }
     if (!Number.isInteger(duration) || duration <= 0) {
-      alert("Durata trebuie să fie un număr întreg pozitiv.");
+      alert("Timpul de lucru trebuie să fie un număr întreg pozitiv.");
+      return;
+    }
+    if (!Number.isInteger(accessWindow) || accessWindow <= 0) {
+      alert("Fereastra de începere trebuie să fie un număr întreg pozitiv.");
       return;
     }
     if (!Number.isFinite(maxGrade) || maxGrade <= 0) {
@@ -176,6 +190,7 @@ export default function AdminBacPage() {
         subject,
         startAt: localDatetimeToISO(startAtLocal),
         durationMinutes: duration,
+        accessWindowMinutes: accessWindow,
         maxGrade,
       };
 
@@ -422,37 +437,63 @@ export default function AdminBacPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                   gap: 10,
                 }}
               >
-                <input
-                  type="datetime-local"
-                  value={form.startAt}
-                  onChange={(e) => setForm({ ...form, startAt: e.target.value })}
-                  disabled={savingSimulation || !bacBackendAvailable}
-                  className="field-input"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="Durată (min)"
-                  value={form.durationMinutes}
-                  onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-                  disabled={savingSimulation || !bacBackendAvailable}
-                  className="field-input"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  step={0.01}
-                  placeholder="Max"
-                  value={form.maxGrade}
-                  onChange={(e) => setForm({ ...form, maxGrade: e.target.value })}
-                  disabled={savingSimulation || !bacBackendAvailable}
-                  className="field-input"
-                />
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className="field-label">Ora de la care se poate începe</span>
+                  <input
+                    type="datetime-local"
+                    value={form.startAt}
+                    onChange={(e) => setForm({ ...form, startAt: e.target.value })}
+                    disabled={savingSimulation || !bacBackendAvailable}
+                    className="field-input"
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className="field-label">Timp de lucru (min)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="Ex.: 180"
+                    value={form.durationMinutes}
+                    onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
+                    disabled={savingSimulation || !bacBackendAvailable}
+                    className="field-input"
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className="field-label">Fereastră de începere (min)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="Ex.: 600"
+                    value={form.accessWindowMinutes}
+                    onChange={(e) => setForm({ ...form, accessWindowMinutes: e.target.value })}
+                    disabled={savingSimulation || !bacBackendAvailable}
+                    className="field-input"
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span className="field-label">Punctaj maxim</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={0.01}
+                    placeholder="Max"
+                    value={form.maxGrade}
+                    onChange={(e) => setForm({ ...form, maxGrade: e.target.value })}
+                    disabled={savingSimulation || !bacBackendAvailable}
+                    className="field-input"
+                  />
+                </label>
+              </div>
+              <div className="small">
+                Exemplu: start 09:00, fereastră 600 minute, timp de lucru 180 minute. Elevul poate începe
+                oricând între 09:00 și 19:00, iar cronometrul lui personal durează 180 minute.
               </div>
 
               <textarea
@@ -523,7 +564,8 @@ export default function AdminBacPage() {
                     <div className="exam-item-title">{simulation.title}</div>
                     <div className="small">Materie: {simulation.subject}</div>
                     <div className="small" style={{ opacity: 0.85 }}>
-                      Începe: {formatWhen(simulation.startAt)} • Durată:{" "}
+                      Începe: {formatWhen(simulation.startAt)} • Fereastră start:{" "}
+                      {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru:{" "}
                       {simulation.durationMinutes ?? "—"} min • Max:{" "}
                       {simulation.maxGrade ?? 10}
                     </div>

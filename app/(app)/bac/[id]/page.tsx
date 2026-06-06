@@ -9,8 +9,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { PageShell } from "@/components/PageShell";
 import { Card, OutlineButton } from "@/components/ui";
 import { hasBacModels } from "@/lib/amplifyModelAvailability";
-import { formatWhen } from "@/lib/dateTime";
-import { getExamWindow } from "@/lib/examWindow";
+import { formatWhen, toTimestamp } from "@/lib/dateTime";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
@@ -28,7 +27,31 @@ type BacEvaluation = Schema["BacEvaluation"]["type"];
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const SUBMIT_GRACE_MS = 15 * 60_000;
-const REQUEST_GRACE_MS = 15 * 60_000;
+
+function getBacWindow(simulation?: BacSimulation | null) {
+  const startMs = simulation?.startAt ? toTimestamp(simulation.startAt) : Number.NaN;
+  const startWindowMinutes = Number(
+    simulation?.accessWindowMinutes ?? simulation?.durationMinutes ?? 0
+  );
+  const startWindowEndMs =
+    Number.isFinite(startMs) && Number.isFinite(startWindowMinutes)
+      ? startMs + startWindowMinutes * 60_000
+      : Number.NaN;
+
+  return { startMs, startWindowMinutes, startWindowEndMs };
+}
+
+function formatRemaining(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return "00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return hours > 0
+    ? `${hours}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(minutes)}:${pad(seconds)}`;
+}
 
 function safeFileName(name: string) {
   const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-");
@@ -39,6 +62,9 @@ function mapBacSubmitError(raw?: string) {
   const msg = String(raw ?? "");
   if (msg.includes("BAC_NOT_STARTED")) return "Simularea nu a început încă.";
   if (msg.includes("BAC_ENDED")) return "Intervalul de trimitere s-a încheiat.";
+  if (msg.includes("BAC_START_WINDOW_CLOSED")) {
+    return "Fereastra de începere a simulării s-a încheiat.";
+  }
   if (msg.includes("BAC_ACCESS_REQUIRED")) return "Participarea trebuie aprobată înainte.";
   if (msg.includes("BAC_REQUEST_WINDOW_CLOSED")) {
     return "Perioada de solicitare a participării s-a încheiat.";
@@ -70,6 +96,7 @@ export default function BacSimulationPage() {
 
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
+  const [startingExam, setStartingExam] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [studentNote, setStudentNote] = useState("");
@@ -82,6 +109,29 @@ export default function BacSimulationPage() {
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  async function loadContentAndRefreshAccess(currentUserId: string) {
+    const contentRes = await client.queries.getAuthorizedBacSimulationContent({
+      simulationId,
+    });
+
+    if (contentRes.errors?.length) {
+      console.error(contentRes.errors);
+      setContent(null);
+      setContentError(mapBacSubmitError(contentRes.errors[0]?.message));
+      return;
+    }
+
+    setContent(contentRes.data ?? null);
+    setContentError(null);
+
+    const accessAfterStartRes = await client.models.BacAccess.get({
+      owner: currentUserId,
+      simulationId,
+    });
+    if (accessAfterStartRes.errors?.length) console.error(accessAfterStartRes.errors);
+    setAccess(accessAfterStartRes.data ?? null);
+  }
 
   async function refresh(currentUserId: string) {
     const canLoadBac = hasBacModels(client.models);
@@ -115,24 +165,18 @@ export default function BacSimulationPage() {
     if (submissionRes.errors?.length) console.error(submissionRes.errors);
     if (evaluationRes.errors?.length) console.error(evaluationRes.errors);
 
+    const currentAccess = accessRes.data ?? null;
+
     setSimulation(simulationRes.data ?? null);
     setRequest(requestRes.data ?? null);
-    setAccess(accessRes.data ?? null);
+    setAccess(currentAccess);
     setSubmission(submissionRes.data ?? null);
     setEvaluation(evaluationRes.data ?? null);
 
     setContent(null);
     setContentError(null);
-    if (accessRes.data) {
-      const contentRes = await client.queries.getAuthorizedBacSimulationContent({
-        simulationId,
-      });
-      if (contentRes.errors?.length) {
-        console.error(contentRes.errors);
-        setContentError(mapBacSubmitError(contentRes.errors[0]?.message));
-      } else {
-        setContent(contentRes.data ?? null);
-      }
+    if (currentAccess?.startedAt) {
+      await loadContentAndRefreshAccess(currentUserId);
     }
   }
 
@@ -165,22 +209,48 @@ export default function BacSimulationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, simulationId]);
 
-  const { startMs, endMs } = useMemo(
-    () => getExamWindow(simulation ?? {}),
+  const { startMs, startWindowEndMs } = useMemo(
+    () => getBacWindow(simulation),
     [simulation]
   );
 
-  const isBefore = Number.isFinite(startMs) ? nowMs < startMs : false;
-  const isOpen =
-    Number.isFinite(startMs) && Number.isFinite(endMs)
-      ? nowMs >= startMs && nowMs <= endMs + SUBMIT_GRACE_MS
-      : false;
-  const isAfter = Number.isFinite(endMs) ? nowMs > endMs + SUBMIT_GRACE_MS : false;
-  const requestWindowClosed = Number.isFinite(endMs)
-    ? nowMs > endMs + REQUEST_GRACE_MS
-    : true;
-  const isGraded = evaluation?.status === "GRADED";
   const hasAccess = Boolean(access);
+  const startedAtMs = toTimestamp(access?.startedAt ?? content?.startedAt);
+  const deadlineAtMs = toTimestamp(access?.deadlineAt ?? content?.deadlineAt);
+  const hasStarted = Number.isFinite(startedAtMs) && Number.isFinite(deadlineAtMs);
+  const isBefore = Number.isFinite(startMs) ? nowMs < startMs : false;
+  const canStart =
+    hasAccess &&
+    !hasStarted &&
+    Number.isFinite(startMs) &&
+    Number.isFinite(startWindowEndMs) &&
+    nowMs >= startMs &&
+    nowMs <= startWindowEndMs;
+  const startWindowClosed =
+    !hasStarted && Number.isFinite(startWindowEndMs)
+      ? nowMs > startWindowEndMs
+      : false;
+  const isOpen = hasStarted ? nowMs <= deadlineAtMs + SUBMIT_GRACE_MS : false;
+  const isAfter = hasStarted ? nowMs > deadlineAtMs + SUBMIT_GRACE_MS : startWindowClosed;
+  const requestWindowClosed = Number.isFinite(startWindowEndMs)
+    ? nowMs > startWindowEndMs
+    : true;
+  const remainingWorkMs = hasStarted ? deadlineAtMs - nowMs : Number.NaN;
+  const remainingStartWindowMs =
+    !hasStarted && Number.isFinite(startWindowEndMs) ? startWindowEndMs - nowMs : Number.NaN;
+  const isGraded = evaluation?.status === "GRADED";
+
+  async function startSimulation() {
+    if (!userId || !hasAccess || startingExam) return;
+
+    setStartingExam(true);
+    setContentError(null);
+    try {
+      await loadContentAndRefreshAccess(userId);
+    } finally {
+      setStartingExam(false);
+    }
+  }
 
   async function requestParticipation() {
     if (!simulation || !userId || !bacBackendAvailable) return;
@@ -348,7 +418,9 @@ export default function BacSimulationPage() {
                 <div className="bac-kicker">{simulation.subject}</div>
                 <div className="bac-title">{simulation.title}</div>
                 <div className="bac-subtitle">
-                  {formatWhen(simulation.startAt)} • {simulation.durationMinutes ?? "—"} min •{" "}
+                  {formatWhen(simulation.startAt)} • Fereastră start{" "}
+                  {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru{" "}
+                  {simulation.durationMinutes ?? "—"} min •{" "}
                   Max {simulation.maxGrade ?? 10}
                 </div>
               </div>
@@ -360,7 +432,8 @@ export default function BacSimulationPage() {
             <Card className="bac-card">
               <div className="section-title">Detalii simulare</div>
               <div className="small" style={{ marginTop: 8 }}>
-                Materie: {simulation.subject} • Începe: {formatWhen(simulation.startAt)} • Durată:{" "}
+                Materie: {simulation.subject} • Începe: {formatWhen(simulation.startAt)} • Fereastră start:{" "}
+                {simulation.accessWindowMinutes ?? simulation.durationMinutes ?? "—"} min • Timp de lucru:{" "}
                 {simulation.durationMinutes ?? "—"} min • Punctaj maxim:{" "}
                 {simulation.maxGrade ?? 10}
               </div>
@@ -397,19 +470,54 @@ export default function BacSimulationPage() {
                 </div>
               ) : null}
 
+              {hasAccess ? (
+                <div className="exam-item" style={{ marginTop: 14 }}>
+                  <div className="exam-item-title">
+                    {hasStarted ? "Cronometrul tău" : "Începerea simulării"}
+                  </div>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    {hasStarted
+                      ? `Ai început la ${formatWhen(access?.startedAt ?? content?.startedAt)}. Deadline: ${formatWhen(
+                          access?.deadlineAt ?? content?.deadlineAt
+                        )}.`
+                      : isBefore
+                      ? "Simularea nu a început încă."
+                      : canStart
+                      ? `Poți începe acum. Fereastra de start mai este deschisă ${formatRemaining(
+                          remainingStartWindowMs
+                        )}.`
+                      : startWindowClosed
+                      ? "Fereastra de start s-a încheiat."
+                      : "Programul nu poate fi determinat."}
+                  </div>
+                  {hasStarted && isOpen ? (
+                    <div className="small" style={{ marginTop: 6 }}>
+                      Timp rămas: {formatRemaining(remainingWorkMs)}
+                    </div>
+                  ) : null}
+                  {!hasStarted && canStart ? (
+                    <div className="exam-actions" style={{ marginTop: 10 }}>
+                      <OutlineButton onClick={startSimulation} disabled={startingExam}>
+                        {startingExam ? "Se pornește…" : "Începe simularea"}
+                      </OutlineButton>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               {hasAccess && contentError ? (
                 <div className="small" style={{ marginTop: 12 }}>
                   {contentError}
                 </div>
               ) : null}
 
-              {hasAccess && content?.instructions ? (
+              {hasStarted && content?.instructions ? (
                 <div className="small" style={{ marginTop: 12, whiteSpace: "pre-wrap" }}>
                   {content.instructions}
                 </div>
               ) : null}
 
-              {hasAccess && content?.promptText ? (
+              {hasStarted && content?.promptText ? (
                 <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
                   <div className="section-title">Subiect</div>
                   <MathText className="task-question-text" text={content.promptText} />
@@ -419,15 +527,21 @@ export default function BacSimulationPage() {
 
             {hasAccess ? (
               <Card className="bac-card">
-              <div className="section-title">Soluția ta</div>
-              <div className="small" style={{ marginTop: 8 }}>
-                {isBefore
-                  ? "Simularea nu a început încă."
-                  : isOpen
-                  ? "Poți încărca documentul soluției în intervalul deschis."
-                  : isAfter
-                  ? "Intervalul de trimitere s-a încheiat."
-                  : "Programul nu poate fi determinat."}
+	              <div className="section-title">Soluția ta</div>
+	              <div className="small" style={{ marginTop: 8 }}>
+	                {!hasStarted && isBefore
+	                  ? "Simularea nu a început încă."
+	                  : !hasStarted && canStart
+	                  ? "Începe simularea pentru a vedea subiectul și pentru a putea încărca soluția."
+	                  : !hasStarted && startWindowClosed
+	                  ? "Fereastra de începere s-a încheiat."
+	                  : hasStarted && isOpen
+	                  ? `Poți încărca documentul soluției până la deadline. Timp rămas: ${formatRemaining(
+	                      remainingWorkMs
+	                    )}.`
+	                  : isAfter
+	                  ? "Intervalul de trimitere s-a încheiat."
+	                  : "Programul nu poate fi determinat."}
               </div>
 
               {submission ? (
@@ -448,7 +562,7 @@ export default function BacSimulationPage() {
                 </div>
               ) : null}
 
-              {isOpen && !isGraded ? (
+	              {hasStarted && isOpen && !isGraded ? (
                 <div style={{ marginTop: 14, display: "grid", gap: 10, maxWidth: 620 }}>
                   <label className="field-label" htmlFor="bac-solution-file">
                     Document soluție

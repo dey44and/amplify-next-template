@@ -19,6 +19,11 @@ function parseIsoMs(iso?: string | null) {
   return new Date(iso).getTime();
 }
 
+function getPositiveMinutes(value: unknown, fallback?: unknown) {
+  const minutes = Number(value ?? fallback ?? 0);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : Number.NaN;
+}
+
 function cleanOptional(value: unknown, maxLength: number) {
   const text = String(value ?? "").trim();
   if (!text) return null;
@@ -69,21 +74,59 @@ export const handler: Schema["submitBacSubmission"]["functionHandler"] = async (
   if (!simulation) throw new Error("BAC_SIMULATION_NOT_FOUND");
 
   const accessRes = await client.models.BacAccess.get({ owner: userId, simulationId });
-  if (!accessRes.data) throw new Error("BAC_ACCESS_REQUIRED");
+  let access = accessRes.data;
+  if (!access) throw new Error("BAC_ACCESS_REQUIRED");
 
   const startMs = parseIsoMs(simulation.startAt);
-  const durationMinutes = Number(simulation.durationMinutes ?? 0);
-  const endMs =
-    Number.isFinite(startMs) && Number.isFinite(durationMinutes)
-      ? startMs + durationMinutes * 60_000
+  const durationMinutes = getPositiveMinutes(simulation.durationMinutes);
+  const accessWindowMinutes = getPositiveMinutes(
+    simulation.accessWindowMinutes,
+    simulation.durationMinutes
+  );
+  const accessWindowEndMs =
+    Number.isFinite(startMs) && Number.isFinite(accessWindowMinutes)
+      ? startMs + accessWindowMinutes * 60_000
       : Number.NaN;
   const nowMs = Date.now();
 
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || durationMinutes <= 0) {
+  if (
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(durationMinutes) ||
+    !Number.isFinite(accessWindowEndMs)
+  ) {
     throw new Error("BAC_INVALID_WINDOW");
   }
   if (nowMs < startMs) throw new Error("BAC_NOT_STARTED");
-  if (nowMs > endMs + SUBMIT_GRACE_MS) throw new Error("BAC_ENDED");
+
+  let startedAtMs = parseIsoMs(access.startedAt);
+  let deadlineAtMs = parseIsoMs(access.deadlineAt);
+
+  if (!Number.isFinite(startedAtMs)) {
+    if (nowMs > accessWindowEndMs) throw new Error("BAC_START_WINDOW_CLOSED");
+
+    startedAtMs = Math.max(nowMs, startMs);
+    deadlineAtMs = startedAtMs + durationMinutes * 60_000;
+
+    const updateAccessRes = await client.models.BacAccess.update({
+      owner: userId,
+      simulationId,
+      startedAt: new Date(startedAtMs).toISOString(),
+      deadlineAt: new Date(deadlineAtMs).toISOString(),
+    });
+    access = updateAccessRes.data ?? access;
+  } else if (!Number.isFinite(deadlineAtMs)) {
+    deadlineAtMs = startedAtMs + durationMinutes * 60_000;
+    const updateAccessRes = await client.models.BacAccess.update({
+      owner: userId,
+      simulationId,
+      deadlineAt: new Date(deadlineAtMs).toISOString(),
+    });
+    access = updateAccessRes.data ?? access;
+  }
+
+  const effectiveDeadlineMs = parseIsoMs(access.deadlineAt) || deadlineAtMs;
+  if (!Number.isFinite(effectiveDeadlineMs)) throw new Error("BAC_INVALID_WINDOW");
+  if (nowMs > effectiveDeadlineMs + SUBMIT_GRACE_MS) throw new Error("BAC_ENDED");
 
   const existingEvaluationRes = await client.models.BacEvaluation.get({
     submissionOwner: userId,
