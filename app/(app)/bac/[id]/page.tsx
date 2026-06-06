@@ -48,6 +48,12 @@ function formatLatestStartAt(simulation?: BacSimulation | null) {
     : formatWhen(null);
 }
 
+function optionalTimestamp(iso?: string | null) {
+  if (!iso) return Number.NaN;
+  const ms = toTimestamp(iso);
+  return Number.isFinite(ms) ? ms : Number.NaN;
+}
+
 function formatRemaining(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "00:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -68,7 +74,7 @@ function safeFileName(name: string) {
 function mapBacSubmitError(raw?: string) {
   const msg = String(raw ?? "");
   if (msg.includes("BAC_NOT_STARTED")) return "Simularea nu a început încă.";
-  if (msg.includes("BAC_ENDED")) return "Intervalul de trimitere s-a încheiat.";
+  if (msg.includes("BAC_ENDED")) return "Timpul personal de lucru s-a încheiat.";
   if (msg.includes("BAC_START_WINDOW_CLOSED")) {
     return "Fereastra de începere a simulării s-a încheiat.";
   }
@@ -222,8 +228,8 @@ export default function BacSimulationPage() {
   );
 
   const hasAccess = Boolean(access);
-  const startedAtMs = toTimestamp(access?.startedAt ?? content?.startedAt);
-  const deadlineAtMs = toTimestamp(access?.deadlineAt ?? content?.deadlineAt);
+  const startedAtMs = optionalTimestamp(access?.startedAt ?? content?.startedAt);
+  const deadlineAtMs = optionalTimestamp(access?.deadlineAt ?? content?.deadlineAt);
   const hasStarted = Number.isFinite(startedAtMs) && Number.isFinite(deadlineAtMs);
   const isBefore = Number.isFinite(startMs) ? nowMs < startMs : false;
   const canStart =
@@ -497,11 +503,12 @@ export default function BacSimulationPage() {
                       ? "Fereastra de start s-a încheiat."
                       : "Programul nu poate fi determinat."}
                   </div>
-                  {hasStarted && isOpen ? (
-                    <div className="small" style={{ marginTop: 6 }}>
-                      Timp rămas: {formatRemaining(remainingWorkMs)}
-                    </div>
-                  ) : null}
+	                  {hasStarted && isOpen ? (
+	                    <div className="bac-timer-box">
+	                      <div className="small">Timp rămas</div>
+	                      <div className="bac-timer-value">{formatRemaining(remainingWorkMs)}</div>
+	                    </div>
+	                  ) : null}
                   {!hasStarted && canStart ? (
                     <div className="exam-actions" style={{ marginTop: 10 }}>
                       <OutlineButton onClick={startSimulation} disabled={startingExam}>
@@ -541,13 +548,13 @@ export default function BacSimulationPage() {
 	                  : !hasStarted && canStart
 	                  ? "Începe simularea pentru a vedea subiectul și pentru a putea încărca soluția."
 	                  : !hasStarted && startWindowClosed
-	                  ? "Fereastra de începere s-a încheiat."
+	                  ? "Nu ai început simularea în fereastra disponibilă, deci încărcarea soluției nu mai este disponibilă."
 	                  : hasStarted && isOpen
 	                  ? `Poți încărca documentul soluției până la deadline. Timp rămas: ${formatRemaining(
 	                      remainingWorkMs
 	                    )}.`
 	                  : isAfter
-	                  ? "Intervalul de trimitere s-a încheiat."
+	                  ? "Timpul personal de lucru s-a încheiat."
 	                  : "Programul nu poate fi determinat."}
               </div>
 

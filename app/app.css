@@ -809,6 +809,26 @@ button:focus-visible {
     linear-gradient(135deg, rgba(244, 183, 24, 0.14), rgba(47, 143, 124, 0.06));
 }
 
+.bac-timer-box {
+  margin-top: 12px;
+  width: fit-content;
+  min-width: 178px;
+  border: 1px solid color-mix(in srgb, var(--bac-blue) 18%, var(--border) 82%);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 22px rgba(21, 87, 165, 0.08);
+}
+
+.bac-timer-value {
+  margin-top: 2px;
+  color: var(--bac-navy);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.9rem, 1.45rem + 1.7vw, 2.7rem);
+  line-height: 1;
+  font-weight: 820;
+}
+
 .siteHeader {
   position: sticky;
   top: 0;

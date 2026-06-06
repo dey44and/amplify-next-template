@@ -36,6 +36,12 @@ function getBacWindow(simulation: BacSimulation) {
   return { startMs, startWindowMinutes, startWindowEndMs };
 }
 
+function optionalTimestamp(iso?: string | null) {
+  if (!iso) return Number.NaN;
+  const ms = toTimestamp(iso);
+  return Number.isFinite(ms) ? ms : Number.NaN;
+}
+
 function formatLatestStartAt(simulation: BacSimulation) {
   const { startWindowEndMs } = getBacWindow(simulation);
   return Number.isFinite(startWindowEndMs)
@@ -76,8 +82,8 @@ function statusLabel(args: {
   if (submission) return "Trimis";
 
   const { startMs, startWindowEndMs } = getBacWindow(simulation);
-  const startedMs = toTimestamp(access.startedAt);
-  const deadlineMs = toTimestamp(access.deadlineAt);
+  const startedMs = optionalTimestamp(access.startedAt);
+  const deadlineMs = optionalTimestamp(access.deadlineAt);
 
   if (Number.isFinite(startedMs) && Number.isFinite(deadlineMs)) {
     if (nowMs <= deadlineMs + SUBMIT_GRACE_MS) return "În lucru";
