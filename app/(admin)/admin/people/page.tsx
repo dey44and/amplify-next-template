@@ -55,6 +55,36 @@ function compactOwner(owner: string) {
   return owner.length > 14 ? `${owner.slice(0, 8)}…${owner.slice(-4)}` : owner;
 }
 
+function avatarLabelFor(person: Pick<PersonRow, "displayName" | "email" | "owner">) {
+  const source = person.displayName !== person.owner ? person.displayName : person.email ?? person.owner;
+  return source.trim().slice(0, 1).toUpperCase() || "U";
+}
+
+function PersonAvatar({
+  person,
+  size = "compact",
+}: {
+  person: Pick<PersonRow, "displayName" | "email" | "owner" | "profile">;
+  size?: "compact" | "large";
+}) {
+  const [showImage, setShowImage] = useState(true);
+  const avatarUrl = person.profile?.avatarUrl?.trim();
+
+  useEffect(() => {
+    setShowImage(true);
+  }, [avatarUrl]);
+
+  return (
+    <span className={`admin-person-avatar admin-person-avatar--${size}`} aria-hidden="true">
+      {avatarUrl && showImage ? (
+        <img src={avatarUrl} alt="" onError={() => setShowImage(false)} />
+      ) : (
+        <span>{avatarLabelFor(person)}</span>
+      )}
+    </span>
+  );
+}
+
 function latestTimestamp(values: Array<string | null | undefined>) {
   return values.reduce((latest, value) => {
     const next = toTimestamp(value);
@@ -397,21 +427,14 @@ export default function AdminPeoplePage() {
             </div>
           </Card>
 
-          <div
-            style={{
-              display: "grid",
-              gap: 14,
-              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-              alignItems: "start",
-            }}
-          >
-            <Card>
+          <div className="admin-people-grid">
+            <Card className="admin-people-list-card">
               <div className="section-title">Listă persoane</div>
               <div className="page-subtitle" style={{ marginTop: 6 }}>
                 {loading ? "Se încarcă…" : `${filteredPeople.length} persoane afișate`}
               </div>
 
-              <div className="exam-list" style={{ marginTop: 14 }}>
+              <div className="exam-list admin-people-list" style={{ marginTop: 14 }}>
                 {filteredPeople.length === 0 ? (
                   <p className="small" style={{ margin: 0 }}>
                     Nu există persoane pentru filtrul curent.
@@ -425,25 +448,26 @@ export default function AdminPeoplePage() {
                         key={person.owner}
                         type="button"
                         onClick={() => setSelectedOwner(person.owner)}
-                        className="exam-item"
+                        className="exam-item admin-person-button"
                         style={{
-                          textAlign: "left",
-                          cursor: "pointer",
                           borderColor: active ? "#5b7cfa" : "var(--border)",
                           boxShadow: active ? "0 0 0 3px rgba(91,124,250,0.12)" : "none",
                         }}
                       >
-                        <span className="exam-item-title">{person.displayName}</span>
-                        <span className="small">{person.email ?? "Email indisponibil"}</span>
-                        <span className="small" style={{ opacity: 0.75 }}>
-                          ID: {compactOwner(person.owner)}
-                        </span>
-                        <span className="small" style={{ opacity: 0.85 }}>
-                          Admitere: {person.admissionAccess.length} accese,{" "}
-                          {person.admissionAttempts.length} încercări
-                        </span>
-                        <span className="small" style={{ opacity: 0.85 }}>
-                          Bac: {person.bacAccess.length} accese, {person.bacSubmissions.length} lucrări
+                        <PersonAvatar person={person} />
+                        <span className="admin-person-summary">
+                          <span className="exam-item-title">{person.displayName}</span>
+                          <span className="small">{person.email ?? "Email indisponibil"}</span>
+                          <span className="small" style={{ opacity: 0.75 }}>
+                            ID: {compactOwner(person.owner)}
+                          </span>
+                          <span className="small" style={{ opacity: 0.85 }}>
+                            Admitere: {person.admissionAccess.length} accese,{" "}
+                            {person.admissionAttempts.length} încercări
+                          </span>
+                          <span className="small" style={{ opacity: 0.85 }}>
+                            Bac: {person.bacAccess.length} accese, {person.bacSubmissions.length} lucrări
+                          </span>
                         </span>
                       </button>
                     );
@@ -459,17 +483,20 @@ export default function AdminPeoplePage() {
                 </p>
               ) : (
                 <div className="panel-stack">
-                  <div>
-                    <div className="section-title">{selectedPerson.displayName}</div>
-                    <div className="small" style={{ marginTop: 6 }}>
-                      ID complet: {selectedPerson.owner}
-                    </div>
-                    <div className="small" style={{ marginTop: 4 }}>
-                      Email: {selectedPerson.email ?? "nu este disponibil"}
-                    </div>
-                    <div className="small" style={{ marginTop: 4 }}>
-                      Cont: {selectedPerson.account?.username ?? "—"} •{" "}
-                      {selectedPerson.account?.status ?? "status indisponibil"}
+                  <div className="admin-person-detail-head">
+                    <PersonAvatar person={selectedPerson} size="large" />
+                    <div className="admin-person-detail-copy">
+                      <div className="section-title">{selectedPerson.displayName}</div>
+                      <div className="small" style={{ marginTop: 6 }}>
+                        ID complet: {selectedPerson.owner}
+                      </div>
+                      <div className="small" style={{ marginTop: 4 }}>
+                        Email: {selectedPerson.email ?? "nu este disponibil"}
+                      </div>
+                      <div className="small" style={{ marginTop: 4 }}>
+                        Cont: {selectedPerson.account?.username ?? "—"} •{" "}
+                        {selectedPerson.account?.status ?? "status indisponibil"}
+                      </div>
                     </div>
                   </div>
 

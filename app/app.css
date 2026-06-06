@@ -557,6 +557,91 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
+.admin-people-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.admin-people-list {
+  max-height: min(68dvh, 760px);
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-right: -6px;
+  scrollbar-gutter: stable;
+}
+
+.admin-person-button {
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-person-summary {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.admin-person-summary > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-person-avatar {
+  border-radius: 999px;
+  border: 1px solid #c7d4e7;
+  background:
+    linear-gradient(135deg, rgba(231, 239, 255, 0.95), rgba(255, 255, 255, 0.95)),
+    #ffffff;
+  box-shadow: 0 8px 22px rgba(17, 35, 63, 0.1);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #40516d;
+  font-weight: 760;
+  flex: 0 0 auto;
+}
+
+.admin-person-avatar--compact {
+  width: 46px;
+  height: 46px;
+  font-size: 14px;
+}
+
+.admin-person-avatar--large {
+  width: 76px;
+  height: 76px;
+  font-size: 22px;
+}
+
+.admin-person-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-person-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.admin-person-detail-copy {
+  min-width: 0;
+}
+
+.admin-person-detail-copy .small {
+  overflow-wrap: anywhere;
+}
+
 .ui-card {
   border: 1px solid var(--border);
   border-radius: 22px;
@@ -929,6 +1014,32 @@ button:focus-visible {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   border: 0;
+}
+
+@media (max-width: 820px) {
+  .admin-people-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-people-list {
+    max-height: 58dvh;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-person-avatar--compact {
+    width: 42px;
+    height: 42px;
+  }
+
+  .admin-person-avatar--large {
+    width: 64px;
+    height: 64px;
+  }
+
+  .admin-person-detail-head {
+    align-items: flex-start;
+  }
 }
 
 [data-amplify-authenticator] {
