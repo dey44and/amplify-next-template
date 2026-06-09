@@ -335,6 +335,24 @@ export default function BacSimulationPage() {
     window.open(res.url.toString(), "_blank", "noopener,noreferrer");
   }
 
+  async function openEvaluationFile() {
+    const path = evaluation?.evaluationFilePath;
+    if (!path) return;
+
+    const res = await getUrl({
+      path,
+      options: {
+        expiresIn: 300,
+        contentDisposition: {
+          type: "attachment",
+          filename: evaluation.evaluationOriginalName ?? "evaluare.pdf",
+        },
+      },
+    });
+
+    window.open(res.url.toString(), "_blank", "noopener,noreferrer");
+  }
+
   async function submitSolution() {
     if (!bacBackendAvailable || !simulation || !userId || !selectedFile) return;
 
@@ -648,6 +666,13 @@ export default function BacSimulationPage() {
                     {evaluation.evaluationNotes ? (
                       <div className="small" style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
                         {evaluation.evaluationNotes}
+                      </div>
+                    ) : null}
+                    {evaluation.evaluationFilePath ? (
+                      <div className="exam-actions" style={{ marginTop: 12 }}>
+                        <OutlineButton onClick={openEvaluationFile}>
+                          Descarcă PDF evaluator
+                        </OutlineButton>
                       </div>
                     ) : null}
                     <div className="small" style={{ marginTop: 8 }}>

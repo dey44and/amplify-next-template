@@ -70,6 +70,15 @@ export const submitBacSubmissionFn = defineFunction({
   resourceGroupName: "data",
 });
 
+export const publishBacEvaluationFn = defineFunction({
+  entry: "./exam-ops/publishBacEvaluation.ts",
+  resourceGroupName: "data",
+  environment: {
+    APP_BASE_URL: "https://mockexams.ro",
+    SES_FROM_EMAIL: "noreply@mockexams.ro",
+  },
+});
+
 export const listAdminUsersFn = defineFunction({
   entry: "./exam-ops/listAdminUsers.ts",
   resourceGroupName: "data",
@@ -370,9 +379,15 @@ const schema = a.schema({
       manualGrade: a.float(),
       maxGrade: a.float(),
       evaluationNotes: a.string(),
+      evaluationFilePath: a.string(),
+      evaluationOriginalName: a.string(),
+      evaluationContentType: a.string(),
+      evaluationSizeBytes: a.integer(),
       gradedBy: a.string(),
       gradedAt: a.datetime(),
       updatedAt: a.datetime(),
+      notificationEmailSentAt: a.datetime(),
+      notificationEmailError: a.string(),
     })
     .identifier(["submissionOwner", "simulationId"])
     .authorization((allow) => [
@@ -623,6 +638,23 @@ const schema = a.schema({
     .authorization((allow) => [allow.authenticated()])
     .handler(a.handler.function(submitBacSubmissionFn)),
 
+  publishBacEvaluation: a
+    .mutation()
+    .arguments({
+      submissionOwner: a.string().required(),
+      simulationId: a.id().required(),
+      manualGrade: a.float().required(),
+      maxGrade: a.float().required(),
+      evaluationNotes: a.string(),
+      evaluationFilePath: a.string(),
+      evaluationOriginalName: a.string(),
+      evaluationContentType: a.string(),
+      evaluationSizeBytes: a.integer(),
+    })
+    .returns(a.ref("BacEvaluation"))
+    .authorization((allow) => [allow.group("Admin")])
+    .handler(a.handler.function(publishBacEvaluationFn)),
+
   listAdminUsers: a
     .query()
     .returns(a.ref("AdminUserAccount").array())
@@ -643,6 +675,7 @@ const schema = a.schema({
   allow.resource(decideBacRequestFn).to(["query", "mutate"]),
   allow.resource(getBacSimulationContentFn).to(["query", "mutate"]),
   allow.resource(submitBacSubmissionFn).to(["query", "mutate"]),
+  allow.resource(publishBacEvaluationFn).to(["query", "mutate"]),
   allow.resource(listAdminUsersFn).to(["query"]),
 ]);
 

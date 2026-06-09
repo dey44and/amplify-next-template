@@ -19,6 +19,7 @@ import {
   decideBacRequestFn,
   getBacSimulationContentFn,
   submitBacSubmissionFn,
+  publishBacEvaluationFn,
   listAdminUsersFn,
 } from "./data/resource.js";
 
@@ -41,6 +42,7 @@ const backend = defineBackend({
   decideBacRequestFn,
   getBacSimulationContentFn,
   submitBacSubmissionFn,
+  publishBacEvaluationFn,
   listAdminUsersFn,
 });
 
@@ -65,6 +67,7 @@ backend.requestBacAccessFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.decideBacRequestFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.getBacSimulationContentFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.submitBacSubmissionFn.resources.lambda.addToRolePolicy(allowGraphQL);
+backend.publishBacEvaluationFn.resources.lambda.addToRolePolicy(allowGraphQL);
 backend.listAdminUsersFn.resources.lambda.addToRolePolicy(allowGraphQL);
 
 backend.requestBacAccessFn.resources.cfnResources.cfnFunction.addPropertyOverride(
@@ -90,6 +93,18 @@ backend.listAdminUsersFn.resources.lambda.addToRolePolicy(
 );
 
 backend.decideBacRequestFn.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ["ses:SendEmail"],
+    resources: ["*"],
+    conditions: {
+      StringEquals: {
+        "ses:FromAddress": "noreply@mockexams.ro",
+      },
+    },
+  })
+);
+
+backend.publishBacEvaluationFn.resources.lambda.addToRolePolicy(
   new PolicyStatement({
     actions: ["ses:SendEmail"],
     resources: ["*"],

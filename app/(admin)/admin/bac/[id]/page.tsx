@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { HeaderUserActions } from "@/components/HeaderUserActions";
@@ -14,8 +14,8 @@ import { notNull } from "@/lib/notNull";
 
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "@/amplify/data/resource";
-import { getCurrentUser } from "aws-amplify/auth";
-import { getUrl } from "aws-amplify/storage";
+import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
+import { getUrl, uploadData } from "aws-amplify/storage";
 
 const client = generateClient<Schema>();
 
@@ -32,6 +32,8 @@ type EvaluationDraft = {
   maxGrade: string;
   evaluationNotes: string;
 };
+
+const MAX_EVALUATION_FILE_BYTES = 25 * 1024 * 1024;
 
 function draftKey(submission: BacSubmission) {
   return submission.owner ?? "";
@@ -56,6 +58,120 @@ function requestStatusLabel(status?: string | null) {
   return "—";
 }
 
+function safeFileName(name: string) {
+  const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return cleaned || "evaluare.pdf";
+}
+
+function getStudentIdentityId(submission: BacSubmission) {
+  const path = submission.solutionFilePath ?? "";
+  const parts = path.split("/").filter(Boolean);
+  return parts[0] === "bac-submissions" && parts[1] ? parts[1] : null;
+}
+
+function mapPublishEvaluationError(raw?: string) {
+  const msg = String(raw ?? "");
+  if (msg.includes("BAC_INVALID_GRADE")) return "Nota trebuie să fie un număr pozitiv sau zero.";
+  if (msg.includes("BAC_INVALID_MAX_GRADE")) return "Punctajul maxim trebuie să fie pozitiv.";
+  if (msg.includes("BAC_GRADE_OVER_MAX")) return "Nota nu poate depăși punctajul maxim.";
+  if (msg.includes("BAC_SUBMISSION_NOT_FOUND")) return "Lucrarea elevului nu mai există.";
+  if (msg.includes("BAC_SIMULATION_NOT_FOUND")) return "Simularea nu mai există.";
+  return raw ?? "Salvarea evaluării a eșuat.";
+}
+
+type PublishBacEvaluationResult = {
+  data?: BacEvaluation | null;
+  errors?: Array<{ message?: string | null } | null> | null;
+};
+
+async function publishBacEvaluation(args: {
+  submissionOwner: string;
+  simulationId: string;
+  manualGrade: number;
+  maxGrade: number;
+  evaluationNotes?: string;
+  evaluationFilePath?: string;
+  evaluationOriginalName?: string;
+  evaluationContentType?: string;
+  evaluationSizeBytes?: number;
+}): Promise<PublishBacEvaluationResult> {
+  const typedMutations = client.mutations as
+    | {
+        publishBacEvaluation?: (input: typeof args) => Promise<PublishBacEvaluationResult>;
+      }
+    | undefined;
+
+  if (typeof typedMutations?.publishBacEvaluation === "function") {
+    return typedMutations.publishBacEvaluation(args);
+  }
+
+  const clientWithGraphql = client as unknown as {
+    graphql?: (input: {
+      query: string;
+      variables?: Record<string, unknown>;
+    }) => Promise<{
+      data?: { publishBacEvaluation?: BacEvaluation | null };
+      errors?: Array<{ message?: string | null } | null> | null;
+    }>;
+  };
+
+  if (typeof clientWithGraphql.graphql !== "function") {
+    return {
+      errors: [{ message: "PUBLISH_BAC_EVALUATION_UNAVAILABLE" }],
+    };
+  }
+
+  const raw = await clientWithGraphql.graphql({
+    query: /* GraphQL */ `
+      mutation PublishBacEvaluation(
+        $submissionOwner: String!
+        $simulationId: ID!
+        $manualGrade: Float!
+        $maxGrade: Float!
+        $evaluationNotes: String
+        $evaluationFilePath: String
+        $evaluationOriginalName: String
+        $evaluationContentType: String
+        $evaluationSizeBytes: Int
+      ) {
+        publishBacEvaluation(
+          submissionOwner: $submissionOwner
+          simulationId: $simulationId
+          manualGrade: $manualGrade
+          maxGrade: $maxGrade
+          evaluationNotes: $evaluationNotes
+          evaluationFilePath: $evaluationFilePath
+          evaluationOriginalName: $evaluationOriginalName
+          evaluationContentType: $evaluationContentType
+          evaluationSizeBytes: $evaluationSizeBytes
+        ) {
+          submissionOwner
+          simulationId
+          status
+          manualGrade
+          maxGrade
+          evaluationNotes
+          evaluationFilePath
+          evaluationOriginalName
+          evaluationContentType
+          evaluationSizeBytes
+          gradedBy
+          gradedAt
+          updatedAt
+          notificationEmailSentAt
+          notificationEmailError
+        }
+      }
+    `,
+    variables: args,
+  });
+
+  return {
+    data: raw.data?.publishBacEvaluation ?? null,
+    errors: raw.errors,
+  };
+}
+
 export default function AdminBacDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -71,6 +187,9 @@ export default function AdminBacDetailPage() {
   const [evaluations, setEvaluations] = useState<BacEvaluation[]>([]);
   const [profilesByOwner, setProfilesByOwner] = useState<Map<string, Profile>>(new Map());
   const [drafts, setDrafts] = useState<Record<string, EvaluationDraft>>({});
+  const [evaluationFiles, setEvaluationFiles] = useState<Record<string, File | null>>({});
+  const [evaluationUploadProgress, setEvaluationUploadProgress] = useState<Record<string, number | null>>({});
+  const [evaluationErrors, setEvaluationErrors] = useState<Record<string, string | null>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [bacBackendAvailable, setBacBackendAvailable] = useState(true);
 
@@ -190,6 +309,9 @@ export default function AdminBacDetailPage() {
       };
     }
     setDrafts(nextDrafts);
+    setEvaluationFiles({});
+    setEvaluationUploadProgress({});
+    setEvaluationErrors({});
 
     setLoading(false);
   }
@@ -279,6 +401,41 @@ export default function AdminBacDetailPage() {
     });
   }
 
+  function onEvaluationFileChange(owner: string, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setEvaluationErrors((prev) => ({ ...prev, [owner]: null }));
+    setEvaluationUploadProgress((prev) => ({ ...prev, [owner]: null }));
+
+    if (!file) {
+      setEvaluationFiles((prev) => ({ ...prev, [owner]: null }));
+      return;
+    }
+
+    const looksLikePdf =
+      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!looksLikePdf) {
+      event.target.value = "";
+      setEvaluationFiles((prev) => ({ ...prev, [owner]: null }));
+      setEvaluationErrors((prev) => ({
+        ...prev,
+        [owner]: "Atașamentul evaluatorului trebuie să fie un fișier PDF.",
+      }));
+      return;
+    }
+
+    if (file.size <= 0 || file.size > MAX_EVALUATION_FILE_BYTES) {
+      event.target.value = "";
+      setEvaluationFiles((prev) => ({ ...prev, [owner]: null }));
+      setEvaluationErrors((prev) => ({
+        ...prev,
+        [owner]: "Fișierul PDF trebuie să fie între 1B și 25MB.",
+      }));
+      return;
+    }
+
+    setEvaluationFiles((prev) => ({ ...prev, [owner]: file }));
+  }
+
   async function openSubmission(submission: BacSubmission) {
     const path = submission.solutionFilePath;
     if (!path) return;
@@ -290,6 +447,24 @@ export default function AdminBacDetailPage() {
         contentDisposition: {
           type: "attachment",
           filename: submission.solutionOriginalName ?? "solutie.pdf",
+        },
+      },
+    });
+
+    window.open(res.url.toString(), "_blank", "noopener,noreferrer");
+  }
+
+  async function openEvaluationFile(evaluation: BacEvaluation) {
+    const path = evaluation.evaluationFilePath;
+    if (!path) return;
+
+    const res = await getUrl({
+      path,
+      options: {
+        expiresIn: 300,
+        contentDisposition: {
+          type: "attachment",
+          filename: evaluation.evaluationOriginalName ?? "evaluare.pdf",
         },
       },
     });
@@ -323,35 +498,94 @@ export default function AdminBacDetailPage() {
       return;
     }
 
-    const nowIso = new Date().toISOString();
     setSavingKey(owner);
+    setEvaluationErrors((prev) => ({ ...prev, [owner]: null }));
     try {
-      const payload = {
+      const evaluationFile = evaluationFiles[owner] ?? null;
+      let evaluationFilePayload:
+        | {
+            evaluationFilePath: string;
+            evaluationOriginalName: string;
+            evaluationContentType: string;
+            evaluationSizeBytes: number;
+          }
+        | undefined;
+
+      if (evaluationFile) {
+        const studentIdentityId = getStudentIdentityId(submission);
+        if (!studentIdentityId) {
+          setEvaluationErrors((prev) => ({
+            ...prev,
+            [owner]:
+              "Nu am putut determina identitatea de stocare a elevului din lucrarea trimisă.",
+          }));
+          return;
+        }
+
+        const session = await fetchAuthSession();
+        const adminIdentityId = session.identityId ?? "admin";
+        const objectPath = [
+          "bac-evaluations",
+          studentIdentityId,
+          owner,
+          simulationId,
+          `${Date.now()}-${adminIdentityId}-${safeFileName(evaluationFile.name)}`,
+        ].join("/");
+
+        await uploadData({
+          path: objectPath,
+          data: evaluationFile,
+          options: {
+            contentType: "application/pdf",
+            contentDisposition: {
+              type: "attachment",
+              filename: evaluationFile.name,
+            },
+            onProgress: ({ transferredBytes, totalBytes }) => {
+              if (!totalBytes) return;
+              setEvaluationUploadProgress((prev) => ({
+                ...prev,
+                [owner]: Math.round((transferredBytes / totalBytes) * 100),
+              }));
+            },
+          },
+        }).result;
+
+        evaluationFilePayload = {
+          evaluationFilePath: objectPath,
+          evaluationOriginalName: evaluationFile.name,
+          evaluationContentType: "application/pdf",
+          evaluationSizeBytes: evaluationFile.size,
+        };
+      }
+
+      const res = await publishBacEvaluation({
         submissionOwner: owner,
         simulationId,
-        status: "GRADED" as const,
         manualGrade,
         maxGrade,
-        evaluationNotes: draft?.evaluationNotes.trim() || null,
-        gradedBy: adminUserId,
-        gradedAt: nowIso,
-        updatedAt: nowIso,
-      };
-
-      const existing = evaluationsByOwner.get(owner);
-      const res = existing
-        ? await client.models.BacEvaluation.update(payload)
-        : await client.models.BacEvaluation.create(payload);
+        evaluationNotes: draft?.evaluationNotes.trim() || undefined,
+        ...evaluationFilePayload,
+      });
 
       if (res.errors?.length || !res.data) {
         console.error(res.errors);
-        alert("Salvarea evaluării a eșuat.");
+        const message = mapPublishEvaluationError(res.errors?.[0]?.message ?? undefined);
+        setEvaluationErrors((prev) => ({ ...prev, [owner]: message }));
+        alert(message);
         return;
+      }
+
+      if (res.data.notificationEmailError) {
+        alert(
+          `Evaluarea a fost salvată, dar e-mailul nu a fost trimis: ${res.data.notificationEmailError}`
+        );
       }
 
       await refresh();
     } finally {
       setSavingKey(null);
+      setEvaluationUploadProgress((prev) => ({ ...prev, [owner]: null }));
     }
   }
 
@@ -537,7 +771,18 @@ export default function AdminBacDetailPage() {
                         ) : null}
                         <div className="small" style={{ marginTop: 6 }}>
                           Status evaluare: {evaluation?.status ?? "Neevaluat"}
+                          {evaluation?.notificationEmailSentAt
+                            ? ` • E-mail trimis: ${formatWhen(evaluation.notificationEmailSentAt)}`
+                            : ""}
+                          {evaluation?.notificationEmailError
+                            ? ` • E-mail: ${evaluation.notificationEmailError}`
+                            : ""}
                         </div>
+                        {evaluation?.evaluationFilePath ? (
+                          <div className="small" style={{ marginTop: 6, opacity: 0.85 }}>
+                            Document evaluator: {evaluation.evaluationOriginalName ?? "evaluare.pdf"}
+                          </div>
+                        ) : null}
 
                         <div
                           style={{
@@ -587,17 +832,53 @@ export default function AdminBacDetailPage() {
                             className="field-input"
                             style={{ minHeight: 110, resize: "vertical" }}
                           />
+
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <label className="field-label" htmlFor={`bac-evaluation-file-${owner}`}>
+                              PDF evaluator
+                            </label>
+                            <input
+                              id={`bac-evaluation-file-${owner}`}
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              onChange={(event) => onEvaluationFileChange(owner, event)}
+                              disabled={savingKey === owner}
+                              className="field-input"
+                            />
+                            <div className="small">
+                              Atașează opțional un PDF cu observații, barem sau corectură.
+                            </div>
+                            {evaluationUploadProgress[owner] != null ? (
+                              <div className="small">
+                                Încărcare PDF: {evaluationUploadProgress[owner]}%
+                              </div>
+                            ) : null}
+                            {evaluationErrors[owner] ? (
+                              <div className="small" style={{ color: "rgba(180,0,0,0.85)" }}>
+                                {evaluationErrors[owner]}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
 
                         <div className="exam-actions">
                           <OutlineButton onClick={() => openSubmission(submission)}>
                             Deschide soluția
                           </OutlineButton>
+                          {evaluation?.evaluationFilePath ? (
+                            <OutlineButton onClick={() => openEvaluationFile(evaluation)}>
+                              Deschide PDF evaluator
+                            </OutlineButton>
+                          ) : null}
                           <OutlineButton
                             onClick={() => saveEvaluation(submission)}
                             disabled={savingKey === owner}
                           >
-                            {savingKey === owner ? "Se salvează…" : "Salvează evaluarea"}
+                            {savingKey === owner
+                              ? "Se publică…"
+                              : evaluation
+                              ? "Actualizează evaluarea"
+                              : "Publică evaluarea"}
                           </OutlineButton>
                         </div>
                       </div>
